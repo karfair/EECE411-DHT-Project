@@ -147,6 +147,23 @@ public class KVClient implements Closeable {
 		}
 	}
 
+	public boolean kill() {
+		byte[] request = new byte[Code.CMD_LENGTH];
+		request[0] = Command.SHUTDOWN;
+		byte[] rcv = null;
+		try {
+			rcv = u.sendAndWait(request);
+		} catch (IOException e) {
+			return false;
+		}
+		if (rcv == null) {
+			return false;
+		} else if (rcv[0] == Response.SUCCESS) {
+			return true;
+		}
+		return false;
+	}
+
 	// check is a node is alive at the IP&port inputed
 	public boolean isAlive() {
 		byte[] request = new byte[Code.CMD_LENGTH];

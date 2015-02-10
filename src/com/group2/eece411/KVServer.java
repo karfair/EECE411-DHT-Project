@@ -2,6 +2,7 @@ package com.group2.eece411;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.xml.bind.DatatypeConverter;
 
@@ -14,6 +15,7 @@ public class KVServer implements RequestListener {
 	private UDPServer server = null;
 	private KVStore table;
 	private int maxSize = Integer.MAX_VALUE;
+	private AtomicBoolean serverIsKilled = new AtomicBoolean(false);
 
 	public KVServer(int maxStorage) {
 		this.maxSize = maxStorage;
@@ -25,8 +27,10 @@ public class KVServer implements RequestListener {
 	}
 
 	public void start() {
-		server = new UDPServer(this);
-		server.start();
+		if (!serverIsKilled.get()) {
+			server = new UDPServer(this);
+			server.start();
+		}
 	}
 
 	public int getPort() {
@@ -37,9 +41,30 @@ public class KVServer implements RequestListener {
 		}
 	}
 
+	public void stopMe(int x) {
+		try {
+			Thread.sleep(x);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		stopMe();
+	}
+
 	public void stopMe() {
+		if (!serverIsKilled.getAndSet(true)) {
+			if (server != null) {
+				server.stopMe();
+			}
+		}
+	}
+
+	public void join() {
 		if (server != null) {
-			server.stopMe();
+			try {
+				server.join();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
 		}
 	}
 
@@ -124,7 +149,12 @@ public class KVServer implements RequestListener {
 			break;
 		case Command.SHUTDOWN:
 			response = Response.SUCCESS;
-			stopMe();
+			new Thread() {
+				@Override
+				public void run() {
+					stopMe();
+				}
+			}.start();
 			break;
 		case Command.ARE_YOU_ALIVE:
 			response = Response.I_AM_ALIVE;

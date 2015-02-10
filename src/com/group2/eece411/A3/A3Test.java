@@ -7,6 +7,12 @@ import javax.xml.bind.DatatypeConverter;
 import com.group2.eece411.KVClient;
 import com.group2.eece411.KVServer;
 
+/**
+ * Start both server and client
+ * 
+ * @author Phil
+ *
+ */
 public class A3Test {
 	public static void main(String[] args) {
 		byte[] defaultKey = new byte[] { 99, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

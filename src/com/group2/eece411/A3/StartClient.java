@@ -11,7 +11,7 @@ public class StartClient {
 		byte[] defaultKey = new byte[] { 99, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 99 };
 		int numClient = 3;
-		int amount = 1000;
+		int amount = 10;
 		String host = "localhost";
 
 		if (args.length != 0) {

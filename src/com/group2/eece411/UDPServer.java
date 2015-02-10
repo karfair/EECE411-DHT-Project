@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
@@ -21,7 +22,8 @@ public class UDPServer extends Thread {
 	private static final int MAX_QUEUE = 30;
 
 	// hold on to responses for a while so they aren't repeated
-	private ResponseHolder rs;
+	// creates a processed response list
+	private ResponseHolder rs = new ResponseHolder();
 	// handles each packet as a thread
 	private ExecutorService requestThreads = Executors
 			.newFixedThreadPool(MAX_THREADS);
@@ -60,24 +62,27 @@ public class UDPServer extends Thread {
 					.println("Error: Socket cannot be created - all specified port are already in use.");
 			System.exit(1);
 		}
-
-		// creates a processed response list
-		rs = new ResponseHolder();
 	}
 
 	// stops the server
 	// closes socket
 	// also stops the collector thread
+	// also does a join()
 	public void stopMe() {
 		running = false;
 		requestThreads.shutdown();
+		// wait for the processing threads to finish
 		try {
 			requestThreads.awaitTermination(1, TimeUnit.MINUTES);
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
 		close();
-		rs.stopMe();
+		try {
+			join();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
 	}
 
 	public int getPort() {
@@ -113,7 +118,12 @@ public class UDPServer extends Thread {
 
 			if (numThreads.tryAcquire()) {
 				// if resources permits, handle the request
-				requestThreads.execute(new PacketHandler(packet));
+				try {
+					requestThreads.execute(new PacketHandler(packet));
+				} catch (RejectedExecutionException e) {
+					// means the server is shutting down
+					continue;
+				}
 			} else {
 				// otherwise return overload
 				new Thread() {
@@ -139,6 +149,8 @@ public class UDPServer extends Thread {
 				}.start();
 			}
 		}
+		// stop and join w/ the collection thread
+		rs.stopMe();
 	}
 
 	// gets the uniqueRequestID from the packet
@@ -294,6 +306,7 @@ public class UDPServer extends Thread {
 				}
 			}
 
+			// stops and waits for the thread to finish
 			public void stopMe() {
 				running = false;
 				interrupt();

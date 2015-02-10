@@ -9,19 +9,21 @@ public class StartServer {
 		KVServer ks = new KVServer(3000);
 		ks.start();
 
-		int sec;
+		int min;
 		if (args.length != 0) {
-			sec = Integer.parseInt(args[0]);
+			min = Integer.parseInt(args[0]);
+		} else {
+			min = 0;
 		}
-		sec = 60 * 60;
-		System.out.println("Server started @port:" + ks.getPort()
-				+ ", will stay alive for " + sec + "s.");
-		try {
-			Thread.sleep(sec * 1000);
-		} catch (InterruptedException e) {
-			e.printStackTrace();
+		if (min != 0) {
+			System.out.println("Server started @port:" + ks.getPort()
+					+ ", will stay alive for " + min + "minutes.");
+			ks.stopMe(min * 60 * 1000);
+		} else {
+			System.out.println("Server started @port:" + ks.getPort()
+					+ ", will stay alive until shutdown is received.");
+			ks.join();
 		}
 		System.out.println("Server shutting down...");
-		ks.stopMe();
 	}
 }
