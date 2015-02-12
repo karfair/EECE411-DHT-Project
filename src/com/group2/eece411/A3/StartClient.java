@@ -11,8 +11,8 @@ public class StartClient {
 		byte[] defaultKey = new byte[] { 99, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 99 };
 		int numClient = 3;
-		int amount = 10;
-		String host = "localhost";
+		int amount = 100;
+		String host = "plonk.cs.uwaterloo.ca";
 
 		if (args.length != 0) {
 			numClient = Integer.parseInt(args[0]);

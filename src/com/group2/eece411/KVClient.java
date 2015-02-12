@@ -64,6 +64,7 @@ public class KVClient implements Closeable {
 			rcv = u.sendAndWait(request);
 		} catch (IOException e) {
 			// e.printStackTrace();
+			System.err.println("no reply:" + e.getMessage());
 			return false;
 		}
 
@@ -73,6 +74,7 @@ public class KVClient implements Closeable {
 		if (rcv[0] == Response.SUCCESS) {
 			return true;
 		} else {
+			System.err.println("error code:" + rcv[0]);
 			return false;
 		}
 	}

@@ -9,6 +9,8 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.Random;
 
+import javax.xml.bind.DatatypeConverter;
+
 public class UDPClient implements Closeable {
 
 	private final static int NUM_TRIES = 3;
@@ -130,15 +132,23 @@ public class UDPClient implements Closeable {
 			for (i = 0; i < NUM_TRIES; i++) {
 				socket.send(packet);
 				try {
-					// receive and extract data
-					socket.receive(rcvpacket);
-					rcv = rcvpacket.getData();
+					for (int j = 0; j < NUM_TRIES; j++) {
+						// receive and extract data
+						socket.receive(rcvpacket);
+						rcv = rcvpacket.getData();
 
-					// checks if uniqueReplyID == uniqueSendID
+						// checks if uniqueReplyID == uniqueSendID
+						if (idEquals(uniqueRequestID, rcv)) {
+							break;
+						} else {
+							// wrong id
+						}
+					}
 					if (idEquals(uniqueRequestID, rcv)) {
 						break;
 					}
 				} catch (IOException e) {
+					// timedOut
 					// intentionally empty
 				}
 
@@ -148,8 +158,10 @@ public class UDPClient implements Closeable {
 			}
 
 			if (i == NUM_TRIES) {
-				String msg = "Send failed: incorrect/no reponse from server after"
-						+ NUM_TRIES + "tries. uniqueID: " + uniqueRequestID;
+				String msg = "Send failed: incorrect/no reponse from server after "
+						+ NUM_TRIES
+						+ " tries. uniqueID: "
+						+ DatatypeConverter.printHexBinary(uniqueRequestID);
 				throw new IOException(msg);
 			}
 
