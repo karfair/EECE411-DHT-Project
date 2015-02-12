@@ -140,8 +140,8 @@ public class UDPServer extends Thread {
 
 						try {
 							socket.send(new DatagramPacket(sendBuf,
-									Config.REQUEST_ID_LENGTH + 1, packet
-											.getAddress(), packet.getPort()));
+									Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH,
+									packet.getAddress(), packet.getPort()));
 						} catch (IOException e1) {
 							e1.printStackTrace();
 						}

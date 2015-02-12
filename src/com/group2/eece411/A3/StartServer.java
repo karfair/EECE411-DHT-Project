@@ -6,7 +6,14 @@ public class StartServer {
 
 	public static void main(String[] args) {
 
-		KVServer ks = new KVServer(3000);
+		int capacity;
+		if (args.length != 0) {
+			capacity = Integer.parseInt(args[0]);
+		} else {
+			capacity = 3000;
+		}
+
+		KVServer ks = new KVServer();
 		ks.start();
 
 		int min;
@@ -17,11 +24,13 @@ public class StartServer {
 		}
 		if (min != 0) {
 			System.out.println("Server started @port:" + ks.getPort()
-					+ ", will stay alive for " + min + "minutes.");
+					+ " with capacity for " + capacity
+					+ " entries, will stay alive for " + min + "minutes.");
 			ks.stopMe(min * 60 * 1000);
 		} else {
 			System.out.println("Server started @port:" + ks.getPort()
-					+ ", will stay alive until shutdown is received.");
+					+ " with capacity for " + capacity
+					+ " entries , will stay alive until shutdown is received.");
 			ks.join();
 		}
 		System.out.println("Server shutting down...");

@@ -7,12 +7,22 @@ import javax.xml.bind.DatatypeConverter;
 import com.group2.eece411.KVClient;
 
 public class StartClient {
+
+	private static byte[] defaultKey = new byte[] { 99, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			99 };
+
+	/**
+	 * args[0] = numClient, args[1] = amount each, args[3] = server name
+	 * 
+	 * @param args
+	 */
 	public static void main(String[] args) {
-		byte[] defaultKey = new byte[] { 99, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 99 };
-		int numClient = 3;
+
+		int numClient = 5;
 		int amount = 100;
-		String host = "plonk.cs.uwaterloo.ca";
+		// String host = "plonk.cs.uwaterloo.ca";
+		String host = "localhost";
 
 		if (args.length != 0) {
 			numClient = Integer.parseInt(args[0]);
@@ -93,7 +103,9 @@ public class StartClient {
 		System.out.println("Stress test completed. put error: " + p.get()
 				+ " null error: " + n.get() + " len error: " + l.get()
 				+ " val error: " + v.get());
-		System.out.println("Time taken: " + (System.currentTimeMillis() - time)
-				/ 1000.0 + " s. Bytes stored: " + bytesSent.get());
+		double timeTaken = (System.currentTimeMillis() - time) / 1000.0;
+		System.out.println("Time taken: " + timeTaken + " s. Bytes stored: "
+				+ bytesSent.get() + " Speed: " + (bytesSent.get() / timeTaken)
+				/ 1000.0 + " kBps");
 	}
 }
