@@ -82,13 +82,6 @@ public class UDPClient implements Closeable {
 		// 2 bytes
 		nPort = ByteBuffer.allocate(Integer.BYTES)
 				.putInt(socket.getLocalPort()).array();
-
-		// try {
-		// System.out.println("disport: " + socket.getLocalPort() + " disIP: "
-		// + InetAddress.getLocalHost().getHostAddress());
-		// } catch (UnknownHostException e) {
-		// e.printStackTrace();
-		// }
 	}
 
 	@Override

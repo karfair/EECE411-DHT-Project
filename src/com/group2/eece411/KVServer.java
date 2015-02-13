@@ -1,5 +1,6 @@
 package com.group2.eece411;
 
+import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -71,13 +72,16 @@ public class KVServer implements RequestListener {
 	// handles the message as stated in A3
 	// messages w/o the uniqueRequestID
 	@Override
-	public byte[] handleRequest(byte[] request) {
+	public void handleRequest(byte[] uniqueRequestID, byte[] request,
+			InetAddress srcAddr, int srcPort) {
 		// if request happens to be null
 		if (request == null) {
 			byte[] response = new byte[1];
 			response[0] = Response.UNRECOGNIZED;
-			return response;
+			server.reply(uniqueRequestID, response, srcAddr, srcPort);
+			return;
 		}
+
 		byte command = request[0];
 		byte response;
 		byte[] value = null;
@@ -173,7 +177,7 @@ public class KVServer implements RequestListener {
 			System.arraycopy(value, 0, data, Code.CMD_LENGTH, value.length);
 		}
 		data[0] = response;
-		return data;
+		server.reply(uniqueRequestID, data, srcAddr, srcPort);
 	}
 
 	private boolean isValidKey(byte[] request) {

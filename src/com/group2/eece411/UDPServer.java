@@ -3,8 +3,10 @@ package com.group2.eece411;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.SocketException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -35,6 +37,9 @@ public class UDPServer extends Thread {
 
 	// upper layer processing
 	private RequestListener requestListener;
+
+	// system overload threads
+	private Executor overloadThreads = Executors.newFixedThreadPool(2);
 
 	public UDPServer(RequestListener requestListener) {
 		super("UDPServer");
@@ -119,27 +124,18 @@ public class UDPServer extends Thread {
 			if (numThreads.tryAcquire()) {
 				// if resources permits, handle the request
 				try {
-					requestThreads.execute(new PacketHandler(packet));
+					requestThreads.execute(new PacketHandler(packet, false));
 				} catch (RejectedExecutionException e) {
 					// means the server is shutting down
 					continue;
 				}
 			} else {
 				// otherwise return overload
-				byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
-						+ Code.CMD_LENGTH];
-				byte[] data = packet.getData();
-				// copy over unique id
-				System.arraycopy(data, 0, sendBuf, 0, Config.REQUEST_ID_LENGTH);
-				// put in error code
-				sendBuf[Config.REQUEST_ID_LENGTH] = Config.Code.Response.SYSTEM_OVERLOAD;
-
 				try {
-					socket.send(new DatagramPacket(sendBuf,
-							Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH, packet
-									.getAddress(), packet.getPort()));
-				} catch (IOException e1) {
-					e1.printStackTrace();
+					overloadThreads.execute(new PacketHandler(packet, true));
+				} catch (RejectedExecutionException e) {
+					// means the server is shutting down
+					continue;
 				}
 			}
 		}
@@ -163,9 +159,11 @@ public class UDPServer extends Thread {
 	private class PacketHandler implements Runnable {
 
 		private DatagramPacket packet;
+		private boolean overloaded;
 
-		public PacketHandler(DatagramPacket p) {
+		public PacketHandler(DatagramPacket p, boolean overloaded) {
 			this.packet = p;
+			this.overloaded = overloaded;
 		}
 
 		@Override
@@ -173,43 +171,52 @@ public class UDPServer extends Thread {
 			// get the receive data
 			byte[] data = packet.getData();
 
-			// get the uniqueRequestID
-			String uniqueRequestID = getUniqueRequestID(data);
+			if (!overloaded) {
+				// get the uniqueRequestID
+				byte[] id = new byte[Config.REQUEST_ID_LENGTH];
+				System.arraycopy(data, 0, id, 0, Config.REQUEST_ID_LENGTH);
 
-			// checks if this request has already been processed
-			DatagramPacket response = rs.get(uniqueRequestID);
-			if (response == null) { // if not process, send it to be processed
-				byte[] upperLayerData = new byte[packet.getLength()
-						- Config.REQUEST_ID_LENGTH];
-				System.arraycopy(data, Config.REQUEST_ID_LENGTH,
-						upperLayerData, 0, upperLayerData.length);
-				upperLayerData = requestListener.handleRequest(upperLayerData);
-
+				// checks if this request has already been processed
+				DatagramPacket response = rs.get(getUniqueRequestID(id));
+				if (response == null) { // if not process, send it to be
+										// processed
+					byte[] upperLayerData = new byte[packet.getLength()
+							- Config.REQUEST_ID_LENGTH];
+					System.arraycopy(data, Config.REQUEST_ID_LENGTH,
+							upperLayerData, 0, upperLayerData.length);
+					requestListener.handleRequest(id, upperLayerData,
+							packet.getAddress(), packet.getPort());
+				} else {
+					// resend the response
+					try {
+						socket.send(response);
+					} catch (IOException e) {
+						// failed to send
+						System.err
+								.println("failed to send processed response.");
+						e.printStackTrace();
+					}
+				}
+				numThreads.release();
+			} else {
 				byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
-						+ upperLayerData.length];
+						+ Code.CMD_LENGTH];
 				// copy over unique id
 				System.arraycopy(data, 0, sendBuf, 0, Config.REQUEST_ID_LENGTH);
-				// copy the processed data
-				System.arraycopy(upperLayerData, 0, sendBuf,
-						Config.REQUEST_ID_LENGTH, upperLayerData.length);
-				// prepare a packet
-				response = new DatagramPacket(sendBuf, Config.REQUEST_ID_LENGTH
-						+ upperLayerData.length, packet.getAddress(),
-						packet.getPort());
+				// put in error code
+				sendBuf[Config.REQUEST_ID_LENGTH] = Config.Code.Response.SYSTEM_OVERLOAD;
 
-				// put it in the processed packet list
-				rs.put(uniqueRequestID, response);
+				// construct datagram
+				DatagramPacket d = new DatagramPacket(sendBuf,
+						Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH,
+						packet.getAddress(), packet.getPort());
+
+				try {
+					socket.send(d);
+				} catch (IOException e1) {
+					// e1.printStackTrace();
+				}
 			}
-
-			// send/resend the response
-			try {
-				socket.send(response);
-			} catch (IOException e) {
-				// failed to send
-				e.printStackTrace();
-			}
-
-			numThreads.release();
 		}
 	}
 
@@ -329,5 +336,33 @@ public class UDPServer extends Thread {
 				return uniqueRequestID;
 			}
 		}
+	}
+
+	public boolean reply(byte[] uniqueRequestID, byte[] upperLayerData,
+			InetAddress srcAddr, int srcPort) {
+		byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
+				+ upperLayerData.length];
+		// copy over unique id
+		System.arraycopy(uniqueRequestID, 0, sendBuf, 0,
+				Config.REQUEST_ID_LENGTH);
+		// copy the processed data
+		System.arraycopy(upperLayerData, 0, sendBuf, Config.REQUEST_ID_LENGTH,
+				upperLayerData.length);
+		// prepare a packet
+		DatagramPacket response = new DatagramPacket(sendBuf, sendBuf.length,
+				srcAddr, srcPort);
+
+		// put it in the processed packet list
+		rs.put(getUniqueRequestID(uniqueRequestID), response);
+
+		// send/resend the response
+		try {
+			socket.send(response);
+		} catch (IOException e) {
+			// failed to send
+			// e.printStackTrace();
+			return false;
+		}
+		return true;
 	}
 }
