@@ -4,8 +4,9 @@ import com.group2.eece411.KVClient;
 
 public class KillServer {
 	public static void main(String[] args) {
-		String targetServer = "plonk.cs.uwaterloo.ca";
+		// String targetServer = "plonk.cs.uwaterloo.ca";
 		// String targetServer = "localhost";
+		String targetServer = "cs-planetlab3.cs.surrey.sfu.ca";
 		if (args.length != 0) {
 			targetServer = args[0];
 		}
