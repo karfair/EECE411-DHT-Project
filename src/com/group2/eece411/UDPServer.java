@@ -18,8 +18,8 @@ import com.group2.eece411.Config.Code;
 
 public class UDPServer extends Thread {
 
-	private static final int MAX_THREADS = 10;
-	private static final int MAX_QUEUE = 30;
+	private static final int MAX_THREADS = 4;
+	private static final int MAX_QUEUE = 20;
 
 	// hold on to responses for a while so they aren't repeated
 	// creates a processed response list
@@ -126,27 +126,21 @@ public class UDPServer extends Thread {
 				}
 			} else {
 				// otherwise return overload
-				new Thread() {
-					@Override
-					public void run() {
-						byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
-								+ Code.CMD_LENGTH];
-						byte[] data = packet.getData();
-						// copy over unique id
-						System.arraycopy(data, 0, sendBuf, 0,
-								Config.REQUEST_ID_LENGTH);
-						// put in error code
-						sendBuf[Config.REQUEST_ID_LENGTH] = Config.Code.Response.SYSTEM_OVERLOAD;
+				byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
+						+ Code.CMD_LENGTH];
+				byte[] data = packet.getData();
+				// copy over unique id
+				System.arraycopy(data, 0, sendBuf, 0, Config.REQUEST_ID_LENGTH);
+				// put in error code
+				sendBuf[Config.REQUEST_ID_LENGTH] = Config.Code.Response.SYSTEM_OVERLOAD;
 
-						try {
-							socket.send(new DatagramPacket(sendBuf,
-									Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH,
-									packet.getAddress(), packet.getPort()));
-						} catch (IOException e1) {
-							e1.printStackTrace();
-						}
-					}
-				}.start();
+				try {
+					socket.send(new DatagramPacket(sendBuf,
+							Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH, packet
+									.getAddress(), packet.getPort()));
+				} catch (IOException e1) {
+					e1.printStackTrace();
+				}
 			}
 		}
 		// stop and join w/ the collection thread
@@ -185,7 +179,7 @@ public class UDPServer extends Thread {
 			// checks if this request has already been processed
 			DatagramPacket response = rs.get(uniqueRequestID);
 			if (response == null) { // if not process, send it to be processed
-				byte[] upperLayerData = new byte[data.length
+				byte[] upperLayerData = new byte[packet.getLength()
 						- Config.REQUEST_ID_LENGTH];
 				System.arraycopy(data, Config.REQUEST_ID_LENGTH,
 						upperLayerData, 0, upperLayerData.length);
@@ -226,7 +220,7 @@ public class UDPServer extends Thread {
 		 * processed packet (a response) with a uniqueRequestID, so that it does
 		 * not get reprocessed.
 		 */
-		private final static int RESPONSE_HOLD_TIME = 1000;
+		private final static int RESPONSE_HOLD_TIME = 1500;
 
 		private ConcurrentHashMap<String, DatagramPacket> map;
 		private LinkedBlockingQueue<Response> newResponse;
