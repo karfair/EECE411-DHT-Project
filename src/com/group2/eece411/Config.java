@@ -57,6 +57,7 @@ public class Config {
 			public final static byte ARE_YOU_ALIVE = 0x20;
 
 			public final static byte PASS_REQUEST = 0x30;
+			public final static byte RETURN_RESPONSE = 0x31;
 		}
 
 		public static class Response {

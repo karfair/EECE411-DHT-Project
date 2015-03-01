@@ -187,7 +187,8 @@ public class UDPServer extends Thread {
 					System.arraycopy(data, Config.REQUEST_ID_LENGTH,
 							upperLayerData, 0, upperLayerData.length);
 					requestListener.handleRequest(id, upperLayerData,
-							packet.getAddress(), packet.getPort());
+							packet.getAddress(), packet.getPort(), false, null,
+							0);
 				} else {
 					// resend the response
 					try {
@@ -375,16 +376,20 @@ public class UDPServer extends Thread {
 	// original message minus the unique id
 	public boolean forwardRequest(byte[] uniqueRequestID, byte[] request,
 			InetAddress successor, int successorUDPport, InetAddress srcAddr,
-			int srcPort) {
+			int srcPort, boolean finalForward, InetAddress srcServer, int sPort) {
 		byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH
-				+ 8 + request.length];
+				+ 16 + request.length];
 
 		// copy over unique id
 		System.arraycopy(uniqueRequestID, 0, sendBuf, 0,
 				Config.REQUEST_ID_LENGTH);
 
-		// copy over Command.PASS_REQUEST
-		sendBuf[Config.REQUEST_ID_LENGTH] = Command.PASS_REQUEST;
+		if (finalForward) {
+			sendBuf[Config.REQUEST_ID_LENGTH] = Command.RETURN_RESPONSE;
+		} else {
+			// copy over Command.PASS_REQUEST
+			sendBuf[Config.REQUEST_ID_LENGTH] = Command.PASS_REQUEST;
+		}
 
 		// copy over srcIP
 		byte[] sourceAddress = srcAddr.getAddress();
@@ -397,13 +402,35 @@ public class UDPServer extends Thread {
 		System.arraycopy(sourcePort, 0, sendBuf, Config.REQUEST_ID_LENGTH
 				+ Code.CMD_LENGTH + 4, 4);
 
+		// copy in the passed in server IP
+		byte[] serverAddress = srcServer.getAddress();
+		System.arraycopy(serverAddress, 0, sendBuf, Config.REQUEST_ID_LENGTH
+				+ Code.CMD_LENGTH + 8, 4);
+
+		// copy over this server Port
+		byte[] serverPort = ByteBuffer.allocate(Integer.BYTES).putInt(sPort)
+				.array();
+		System.arraycopy(serverPort, 0, sendBuf, Config.REQUEST_ID_LENGTH
+				+ Code.CMD_LENGTH + 12, 4);
+
 		// copy over request
 		System.arraycopy(request, 0, sendBuf, Config.REQUEST_ID_LENGTH
-				+ Code.CMD_LENGTH + 4 + 4, request.length);
+				+ Code.CMD_LENGTH + 16, request.length);
 
 		// prepare a packet
-		DatagramPacket response = new DatagramPacket(sendBuf, sendBuf.length,
-				successor, successorUDPport);
+		DatagramPacket response;
+
+		// cache the response if get/remove/put happens at this node
+		if (finalForward) {
+			response = new DatagramPacket(sendBuf, sendBuf.length, srcServer,
+					sPort);
+			// put it in the processed packet list
+			rs.put(getUniqueRequestID(uniqueRequestID), response);
+		} else {
+			// prepare a packet
+			response = new DatagramPacket(sendBuf, sendBuf.length, successor,
+					successorUDPport);
+		}
 
 		// send/resend the response
 		try {

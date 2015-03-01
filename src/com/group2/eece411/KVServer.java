@@ -86,7 +86,8 @@ public class KVServer implements RequestListener {
 	// messages w/o the uniqueRequestID
 	@Override
 	public void handleRequest(byte[] uniqueRequestID, byte[] request,
-			InetAddress srcAddr, int srcPort) {
+			InetAddress srcAddr, int srcPort, boolean routeMsgTo,
+			InetAddress srcServer, int serverPort) {
 		// if request happens to be null
 		if (request == null) {
 			byte[] response = new byte[1];
@@ -105,9 +106,14 @@ public class KVServer implements RequestListener {
 				response = Response.INVALID_KEY;
 				break;
 			} else if (!isKeyInRange(request)) {
+				if (!routeMsgTo) {
+					srcServer = dht.getLocalHost();
+					serverPort = server.getPort();
+				}
 				DHT.Successor s = dht.getFirstSuccessor();
 				server.forwardRequest(uniqueRequestID, request, s.ip,
-						s.udpPort, srcAddr, srcPort);
+						s.udpPort, srcAddr, srcPort, false, srcServer,
+						serverPort);
 				return;
 			}
 
@@ -123,9 +129,14 @@ public class KVServer implements RequestListener {
 				response = Response.INVALID_KEY;
 				break;
 			} else if (!isKeyInRange(request)) {
+				if (!routeMsgTo) {
+					srcServer = dht.getLocalHost();
+					serverPort = server.getPort();
+				}
 				DHT.Successor s = dht.getFirstSuccessor();
 				server.forwardRequest(uniqueRequestID, request, s.ip,
-						s.udpPort, srcAddr, srcPort);
+						s.udpPort, srcAddr, srcPort, false, srcServer,
+						serverPort);
 				System.out.println("put out of range.");
 				return;
 			} else if (table.size() >= maxSize) {
@@ -171,9 +182,14 @@ public class KVServer implements RequestListener {
 				response = Response.INVALID_KEY;
 				break;
 			} else if (!isKeyInRange(request)) {
+				if (!routeMsgTo) {
+					srcServer = dht.getLocalHost();
+					serverPort = server.getPort();
+				}
 				DHT.Successor s = dht.getFirstSuccessor();
 				server.forwardRequest(uniqueRequestID, request, s.ip,
-						s.udpPort, srcAddr, srcPort);
+						s.udpPort, srcAddr, srcPort, false, srcServer,
+						serverPort);
 				return;
 			}
 			if (table.remove(parseKey(request)) != null) {
@@ -196,17 +212,30 @@ public class KVServer implements RequestListener {
 			response = Response.I_AM_ALIVE;
 			break;
 		case Command.PASS_REQUEST:
-			byte[] parsedRequest = new byte[request.length - 9];
+		case Command.RETURN_RESPONSE:
+			byte[] parsedRequest = new byte[request.length - 17];
+
+			// source client
 			byte[] ip = new byte[4];
 			byte[] port = new byte[4];
 
+			// source server
+			byte[] sIp = new byte[4];
+			byte[] sPort = new byte[4];
+
 			System.arraycopy(request, Code.CMD_LENGTH, ip, 0, 4);
 			System.arraycopy(request, Code.CMD_LENGTH + 4, port, 0, 4);
-			System.arraycopy(request, Code.CMD_LENGTH + 8, parsedRequest, 0,
-					request.length - 9);
 
+			System.arraycopy(request, Code.CMD_LENGTH + 8, sIp, 0, 4);
+			System.arraycopy(request, Code.CMD_LENGTH + 12, sPort, 0, 4);
+
+			System.arraycopy(request, Code.CMD_LENGTH + 16, parsedRequest, 0,
+					request.length - 17);
+
+			InetAddress srcSer;
 			InetAddress src;
 			try {
+				srcSer = InetAddress.getByAddress(sIp);
 				src = InetAddress.getByAddress(ip);
 			} catch (UnknownHostException e) {
 				System.err
@@ -215,8 +244,22 @@ public class KVServer implements RequestListener {
 			}
 			int intPort = ByteBuffer.wrap(port).getInt(); // TODO not sure if
 															// this works
-			handleRequest(uniqueRequestID, parsedRequest, src, intPort);
-			return;
+			int intSerPort = ByteBuffer.wrap(sPort).getInt();
+
+			if (command == Command.PASS_REQUEST) {
+				handleRequest(uniqueRequestID, parsedRequest, src, intPort,
+						true, srcSer, intSerPort);
+				return;
+			} else { // final return to client
+				srcAddr = src;
+				srcPort = intPort;
+				response = parsedRequest[0];
+				if (parsedRequest.length > 1) {
+					value = new byte[parsedRequest.length - 1];
+					System.arraycopy(parsedRequest, 1, value, 0, value.length);
+				}
+			}
+			break;
 		default:
 			response = Response.UNRECOGNIZED;
 			break;
@@ -231,7 +274,13 @@ public class KVServer implements RequestListener {
 			System.arraycopy(value, 0, data, Code.CMD_LENGTH, value.length);
 		}
 		data[0] = response;
-		server.reply(uniqueRequestID, data, srcAddr, srcPort);
+
+		if (routeMsgTo) { // final reply to another server
+			server.forwardRequest(uniqueRequestID, data, null, 0, srcAddr,
+					srcPort, true, srcServer, serverPort);
+		} else { // proceed as normal
+			server.reply(uniqueRequestID, data, srcAddr, srcPort);
+		}
 	}
 
 	private boolean isValidKey(byte[] request) {

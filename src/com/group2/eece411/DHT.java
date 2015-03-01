@@ -96,6 +96,10 @@ public class DHT extends Thread {
 		return serverSocket.getLocalPort();
 	}
 
+	public InetAddress getLocalHost() {
+		return thisNode;
+	}
+
 	/**
 	 * Stops this thread safety and also does a join()
 	 */
@@ -180,7 +184,8 @@ public class DHT extends Thread {
 				} catch (NullPointerException npe) {
 					// probably means it is communicating to has died
 					// or the dht is shutting down
-					// TODO
+					// TODO - it cant die if what's it;s currently taljign to is
+					// dead
 					if (!serverSocket.isClosed()) {
 						System.err.println("DHT server failed! -> NPE");
 						npe.printStackTrace();
@@ -510,6 +515,7 @@ public class DHT extends Thread {
 			clientSocket.close();
 
 			// cannot connect to successor, assume it is dead
+			// it should try again before contacting 1 TODO
 		} catch (IOException e) {
 			try {
 				InetAddress s;
