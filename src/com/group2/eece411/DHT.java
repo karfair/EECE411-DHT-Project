@@ -14,8 +14,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Timer;
 import java.util.TimerTask;
 
-import javax.xml.bind.DatatypeConverter;
-
 // Circular DHT: Node x key range = (previous node + 1) to x
 public class DHT extends Thread {
 	private static boolean VERBOSE = true;
@@ -24,6 +22,7 @@ public class DHT extends Thread {
 	 */
 	private InetAddress[] successor = new InetAddress[2];
 	private int[] successorPort = new int[2];
+	private int[] successorUDPPort = new int[2];
 	private Object successorLock = new Object();
 
 	/**
@@ -41,6 +40,7 @@ public class DHT extends Thread {
 
 	private InetAddress thisNode;
 	private ServerSocket serverSocket;
+	private int thisUDPPort;
 
 	private Timer successorChecker = new Timer();
 	private boolean running = true;
@@ -61,7 +61,8 @@ public class DHT extends Thread {
 	 * @param port
 	 *            - port of the above
 	 */
-	public DHT(boolean initialNode, String initialNodeName, int port) {
+	public DHT(boolean initialNode, String initialNodeName, int port,
+			int UDPPort) {
 
 		try {
 			this.thisNode = InetAddress.getLocalHost();
@@ -76,6 +77,7 @@ public class DHT extends Thread {
 		this.initialNode = initialNode;
 		this.initialNodeName = initialNodeName;
 		this.initialNodePort = port;
+		this.thisUDPPort = UDPPort;
 
 		try {
 			if (initialNode) {
@@ -130,49 +132,64 @@ public class DHT extends Thread {
 				PrintWriter out = new PrintWriter(
 						clientSocket.getOutputStream(), true);
 
-				String input;
-				input = in.readLine();
-				if (VERBOSE) {
-					System.out.println(input + " @ "
-							+ thisNode.getHostAddress() + ":"
-							+ serverSocket.getLocalPort());
-					if (startKey != null && endKey != null) {
-						System.out.println("s" + startKey.toString());
-						System.out.println("e" + endKey.toString());
-					}
-				}
-				if (input.equals("join")) {
-					String node = in.readLine();
-					int port = Integer.parseInt(in.readLine());
+				try {
+					String input;
+					input = in.readLine();
 					if (VERBOSE) {
-						System.out.println("node: " + node + " port: " + port);
+						System.out.println(input + " @ "
+								+ thisNode.getHostAddress() + ":"
+								+ serverSocket.getLocalPort());
+						if (startKey != null && endKey != null) {
+							System.out.println("s" + startKey.toString());
+							System.out.println("e" + endKey.toString());
+						}
 					}
-					processJoinRequest(node, port);
-				} else if (input.equals("done")) {
-					String successor = in.readLine();
-					int port = Integer.parseInt(in.readLine());
-					String startKey = in.readLine();
-					done(successor, startKey, port);
-				} else if (input.equals("fail")) {
-					BigInteger startKey = getStartKey(in.readLine());
-					synchronized (startKeyLock) {
-						this.startKey = startKey;
+					if (input.equals("join")) {
+						String node = in.readLine();
+						int port = Integer.parseInt(in.readLine());
+						int udpPort = Integer.parseInt(in.readLine());
+						if (VERBOSE) {
+							System.out.println("node: " + node + " port: "
+									+ port + " udpPort: " + udpPort);
+						}
+						processJoinRequest(node, port, udpPort);
+					} else if (input.equals("done")) {
+						String successor = in.readLine();
+						int port = Integer.parseInt(in.readLine());
+						int udpPort = Integer.parseInt(in.readLine());
+						String startKey = in.readLine();
+						done(successor, startKey, port, udpPort);
+					} else if (input.equals("fail")) {
+						BigInteger startKey = getStartKey(in.readLine());
+						synchronized (startKeyLock) {
+							this.startKey = startKey;
+						}
+					} else if (input.equals("getSuccessor")) {
+						sendFirstSuccessor(out);
+					} else if (input.equals("alive")) {
+						out.println("yes");
+					} else if (input.equals("update")) {
+						String newNode = in.readLine();
+						String oldNode = in.readLine();
+						int newPort = Integer.parseInt(in.readLine());
+						int udpPort = Integer.parseInt(in.readLine());
+						processUpdate(newNode, oldNode, newPort, udpPort);
 					}
-				} else if (input.equals("getSuccessor")) {
-					sendFirstSuccessor(out);
-				} else if (input.equals("alive")) {
-					out.println("yes");
-				} else if (input.equals("update")) {
-					String newNode = in.readLine();
-					String oldNode = in.readLine();
-					int newPort = Integer.parseInt(in.readLine());
-					processUpdate(newNode, oldNode, newPort);
+					clientSocket.close();
+
+				} catch (NullPointerException npe) {
+					// probably means it is communicating to has died
+					// or the dht is shutting down
+					// TODO
+					if (!serverSocket.isClosed()) {
+						System.err.println("DHT server failed! -> NPE");
+						npe.printStackTrace();
+					}
 				}
-				clientSocket.close();
 			}
 		} catch (IOException e) {
 			if (!serverSocket.isClosed()) {
-				System.err.println("DHT server failed!");
+				System.err.println("DHT server failed! -> IOException");
 				e.printStackTrace();
 			}
 		}
@@ -190,24 +207,38 @@ public class DHT extends Thread {
 		return getPositiveBigInteger(hash);
 	}
 
+	public Successor getFirstSuccessor() {
+		InetAddress s;
+		int udpport;
+		synchronized (successorLock) {
+			s = successor[0];
+			udpport = successorUDPPort[0];
+		}
+		return new Successor(s, udpport);
+	}
+
 	private void sendFirstSuccessor(PrintWriter out) {
 		String successorName = null;
 		int port = 0;
+		int udpPort = 0;
 		boolean isNull = true;
 		synchronized (successorLock) {
 			if (successor[0] != null) {
 				isNull = false;
 				successorName = successor[0].getHostAddress();
 				port = successorPort[0];
+				udpPort = successorUDPPort[0];
 			}
 		}
 		// if the variable are not initialized, then send ""
 		if (isNull) {
 			out.println("");
 			out.println("");
+			out.println("");
 		} else {
 			out.println(successorName);
 			out.println(port);
+			out.println(udpPort);
 		}
 	}
 
@@ -222,7 +253,7 @@ public class DHT extends Thread {
 		return inetNode;
 	}
 
-	private void processJoinRequest(String node, int port) {
+	private void processJoinRequest(String node, int port, int udpPort) {
 		InetAddress inetNode = getByName(node);
 
 		if (isKeyInRange(inetNode.getAddress())) {
@@ -244,6 +275,7 @@ public class DHT extends Thread {
 				out.println("done");
 				out.println(thisNode.getHostAddress());
 				out.println(serverSocket.getLocalPort());
+				out.println(thisUDPPort);
 				out.println(stringStartKey);
 
 				clientSocket.close();
@@ -255,20 +287,22 @@ public class DHT extends Thread {
 				initialNode = false;
 				successor[0] = inetNode;
 				successorPort[0] = port;
+				successorUDPPort[0] = udpPort;
 				startCheckSuccessor();
 			} else {
 				update(inetNode.getHostAddress(), thisNode.getHostAddress(),
-						port);
+						port, udpPort);
 			}
 		} else {
 			if (VERBOSE) {
 				System.out.println("passing join");
 			}
-			passJoin(inetNode, port);
+			passJoin(inetNode, port, udpPort);
 		}
 	}
 
-	private void processUpdate(String newNode, String oldNode, int newPort) {
+	private void processUpdate(String newNode, String oldNode, int newPort,
+			int udpPort) {
 		InetAddress inetNewNode = getByName(newNode);
 		if (oldNode.equals(thisNode.getHostAddress())) {
 			return;
@@ -279,19 +313,22 @@ public class DHT extends Thread {
 				if (oldNode.equals(successor[0].getHostAddress())) {
 					successor[1] = successor[0];
 					successorPort[1] = successorPort[0];
+					successorUDPPort[1] = successorUDPPort[0];
 
 					successor[0] = inetNewNode;
 					successorPort[0] = newPort;
+					successorUDPPort[0] = udpPort;
 				} else if (oldNode.equals(successor[1].getHostAddress())) {
 					successor[1] = inetNewNode;
 					successorPort[1] = newPort;
+					successorUDPPort[1] = udpPort;
 				}
 			}
 		}
-		update(newNode, oldNode, newPort);
+		update(newNode, oldNode, newPort, udpPort);
 	}
 
-	private void update(String newNode, String oldNode, int newPort) {
+	private void update(String newNode, String oldNode, int newPort, int udpPort) {
 		Socket clientSocket = null;
 		try {
 			InetAddress s;
@@ -313,6 +350,7 @@ public class DHT extends Thread {
 			out.println(newNode);
 			out.println(oldNode);
 			out.println(newPort);
+			out.println(udpPort);
 
 			clientSocket.close();
 
@@ -323,11 +361,11 @@ public class DHT extends Thread {
 	}
 
 	private static byte[] hash(byte[] data) {
-		if (VERBOSE) {
-			System.out.println("hashing: "
-					+ DatatypeConverter.printHexBinary(data) + " numbytes: "
-					+ data.length);
-		}
+		// if (VERBOSE) {
+		// System.out.println("hashing: "
+		// + DatatypeConverter.printHexBinary(data) + " numbytes: "
+		// + data.length);
+		// }
 		MessageDigest messageDigest = null;
 		try {
 			messageDigest = MessageDigest.getInstance("SHA-256");
@@ -335,6 +373,7 @@ public class DHT extends Thread {
 			// should not happen
 			System.err.println("DHT.hash() failed! SHA-256 not found!");
 			e.printStackTrace();
+			return new byte[32];
 		}
 		messageDigest.update(data);
 		return messageDigest.digest();
@@ -351,6 +390,7 @@ public class DHT extends Thread {
 			out.println("join");
 			out.println(thisNode.getHostAddress());
 			out.println(serverSocket.getLocalPort());
+			out.println(thisUDPPort);
 
 			clientSocket.close();
 		} catch (IOException e) {
@@ -359,7 +399,7 @@ public class DHT extends Thread {
 		}
 	}
 
-	private void passJoin(InetAddress inetNode, int port) {
+	private void passJoin(InetAddress inetNode, int port, int udpPort) {
 		Socket clientSocket = null;
 		try {
 			InetAddress s;
@@ -376,6 +416,7 @@ public class DHT extends Thread {
 			out.println("join");
 			out.println(inetNode.getHostAddress());
 			out.println(port);
+			out.println(udpPort);
 
 			clientSocket.close();
 		} catch (IOException e) {
@@ -384,7 +425,7 @@ public class DHT extends Thread {
 		}
 	}
 
-	private void done(String successor, String startKey, int port) {
+	private void done(String successor, String startKey, int port, int udpPort) {
 		if (VERBOSE) {
 			System.out.println("done is called!");
 			System.out.println("successor:" + successor);
@@ -394,6 +435,7 @@ public class DHT extends Thread {
 		synchronized (successorLock) {
 			this.successor[0] = s;
 			this.successorPort[0] = port;
+			this.successorUDPPort[0] = udpPort;
 		}
 		this.getAndSetSuccessorFrom(s, port, 1);
 
@@ -454,6 +496,11 @@ public class DHT extends Thread {
 
 			out.println("alive");
 			String reply = in.readLine();
+			if (reply == null) {
+				// probably mean who this guy is talking to has died
+				// TODO:
+				return;
+			}
 			if (!reply.equals("yes")) {
 				System.err
 						.println("Server is alive but it's not replying \"yes\"...");
@@ -527,6 +574,11 @@ public class DHT extends Thread {
 			System.err.println("DHT.getSuccessorFrom() failed!");
 			e.printStackTrace();
 		}
+		if (reply == null || returnPort == null) {
+			// probably mean who this guy is talking to has died
+			// TODO:
+			return;
+		}
 		if (reply.equals("") || returnPort.equals("")) {
 			return;
 		}
@@ -571,6 +623,16 @@ public class DHT extends Thread {
 				}
 				return false;
 			}
+		}
+	}
+
+	public class Successor {
+		public int udpPort;
+		public InetAddress ip;
+
+		public Successor(InetAddress ip, int udpPort) {
+			this.udpPort = udpPort;
+			this.ip = ip;
 		}
 	}
 }

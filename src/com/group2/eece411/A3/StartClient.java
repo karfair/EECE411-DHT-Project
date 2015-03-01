@@ -19,12 +19,13 @@ public class StartClient {
 	 */
 	public static void main(String[] args) {
 
-		int numClient = 3;
-		int amount = 1000;
+		int numClient = 2;
+		int amount = 500;
 		// String host = "plonk.cs.uwaterloo.ca";
 		// String host = "cs-planetlab3.cs.surrey.sfu.ca";
 		// String host = "planetlab1.cs.ubc.ca";
-		String host = "localhost";
+		String host = "pl1.cs.montana.edu";
+		// String host = "localhost";
 
 		if (args.length != 0) {
 			numClient = Integer.parseInt(args[0]);

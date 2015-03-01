@@ -62,6 +62,7 @@ public class UDPClient implements Closeable {
 			e.printStackTrace();
 			System.exit(1);
 		}
+		System.out.println("local udp port:" + socket.getLocalPort());
 
 		// sets up part of the unique requestID
 

@@ -5,6 +5,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -17,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 import javax.xml.bind.DatatypeConverter;
 
 import com.group2.eece411.Config.Code;
+import com.group2.eece411.Config.Code.Command;
 
 public class UDPServer extends Thread {
 
@@ -340,6 +342,9 @@ public class UDPServer extends Thread {
 
 	public boolean reply(byte[] uniqueRequestID, byte[] upperLayerData,
 			InetAddress srcAddr, int srcPort) {
+		System.out.println("addr: " + srcAddr.getHostAddress() + "port: "
+				+ srcPort);
+
 		byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
 				+ upperLayerData.length];
 		// copy over unique id
@@ -354,6 +359,51 @@ public class UDPServer extends Thread {
 
 		// put it in the processed packet list
 		rs.put(getUniqueRequestID(uniqueRequestID), response);
+
+		// send/resend the response
+		try {
+			socket.send(response);
+		} catch (IOException e) {
+			// failed to send
+			// e.printStackTrace();
+			return false;
+		}
+		return true;
+	}
+
+	// should append 0x30 , 4 byte of src address, 4 byte of the port, then the
+	// original message minus the unique id
+	public boolean forwardRequest(byte[] uniqueRequestID, byte[] request,
+			InetAddress successor, int successorUDPport, InetAddress srcAddr,
+			int srcPort) {
+		byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH
+				+ 8 + request.length];
+
+		// copy over unique id
+		System.arraycopy(uniqueRequestID, 0, sendBuf, 0,
+				Config.REQUEST_ID_LENGTH);
+
+		// copy over Command.PASS_REQUEST
+		sendBuf[Config.REQUEST_ID_LENGTH] = Command.PASS_REQUEST;
+
+		// copy over srcIP
+		byte[] sourceAddress = srcAddr.getAddress();
+		System.arraycopy(sourceAddress, 0, sendBuf, Config.REQUEST_ID_LENGTH
+				+ Code.CMD_LENGTH, 4);
+
+		// copy over srcport
+		byte[] sourcePort = ByteBuffer.allocate(Integer.BYTES).putInt(srcPort)
+				.array();
+		System.arraycopy(sourcePort, 0, sendBuf, Config.REQUEST_ID_LENGTH
+				+ Code.CMD_LENGTH + 4, 4);
+
+		// copy over request
+		System.arraycopy(request, 0, sendBuf, Config.REQUEST_ID_LENGTH
+				+ Code.CMD_LENGTH + 4 + 4, request.length);
+
+		// prepare a packet
+		DatagramPacket response = new DatagramPacket(sendBuf, sendBuf.length,
+				successor, successorUDPport);
 
 		// send/resend the response
 		try {

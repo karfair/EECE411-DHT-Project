@@ -55,6 +55,8 @@ public class Config {
 			 * Command to see if the Node is alive.
 			 */
 			public final static byte ARE_YOU_ALIVE = 0x20;
+
+			public final static byte PASS_REQUEST = 0x30;
 		}
 
 		public static class Response {

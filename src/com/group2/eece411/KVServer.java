@@ -1,6 +1,7 @@
 package com.group2.eece411;
 
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -18,19 +19,28 @@ public class KVServer implements RequestListener {
 	private int maxSize = Integer.MAX_VALUE;
 	private AtomicBoolean serverIsKilled = new AtomicBoolean(false);
 
-	public KVServer(int maxStorage) {
+	private DHT dht;
+
+	public KVServer(int maxStorage, boolean initialNode,
+			String initialNodeName, int port) {
 		this.maxSize = maxStorage;
 		table = new KVStore();
+
+		server = new UDPServer(this);
+		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort());
 	}
 
-	public KVServer() {
+	public KVServer(boolean initialNode, String initialNodeName, int port) {
 		table = new KVStore();
+
+		server = new UDPServer(this);
+		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort());
 	}
 
 	public void start() {
 		if (!serverIsKilled.get()) {
-			server = new UDPServer(this);
 			server.start();
+			dht.start();
 		}
 	}
 
@@ -49,12 +59,14 @@ public class KVServer implements RequestListener {
 			e.printStackTrace();
 		}
 		stopMe();
+		dht.stopMe();
 	}
 
 	public void stopMe() {
 		if (!serverIsKilled.getAndSet(true)) {
 			if (server != null) {
 				server.stopMe();
+				dht.stopMe();
 			}
 		}
 	}
@@ -63,6 +75,7 @@ public class KVServer implements RequestListener {
 		if (server != null) {
 			try {
 				server.join();
+				dht.join();
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
@@ -91,7 +104,13 @@ public class KVServer implements RequestListener {
 			if (!isValidKey(request)) {
 				response = Response.INVALID_KEY;
 				break;
+			} else if (!isKeyInRange(request)) {
+				DHT.Successor s = dht.getFirstSuccessor();
+				server.forwardRequest(uniqueRequestID, request, s.ip,
+						s.udpPort, srcAddr, srcPort);
+				return;
 			}
+
 			value = table.get(parseKey(request));
 			if (value != null) {
 				response = Response.SUCCESS;
@@ -103,10 +122,17 @@ public class KVServer implements RequestListener {
 			if (!isValidKey(request)) {
 				response = Response.INVALID_KEY;
 				break;
+			} else if (!isKeyInRange(request)) {
+				DHT.Successor s = dht.getFirstSuccessor();
+				server.forwardRequest(uniqueRequestID, request, s.ip,
+						s.udpPort, srcAddr, srcPort);
+				System.out.println("put out of range.");
+				return;
 			} else if (table.size() >= maxSize) {
 				response = Response.OUT_OF_SPACE;
 				break;
 			}
+			System.out.println("put in range.");
 
 			// checks if the value length matches the actual value length
 			byte[] valueLength = new byte[Integer.BYTES];
@@ -144,6 +170,11 @@ public class KVServer implements RequestListener {
 			if (!isValidKey(request)) {
 				response = Response.INVALID_KEY;
 				break;
+			} else if (!isKeyInRange(request)) {
+				DHT.Successor s = dht.getFirstSuccessor();
+				server.forwardRequest(uniqueRequestID, request, s.ip,
+						s.udpPort, srcAddr, srcPort);
+				return;
 			}
 			if (table.remove(parseKey(request)) != null) {
 				response = Response.SUCCESS;
@@ -157,12 +188,35 @@ public class KVServer implements RequestListener {
 				@Override
 				public void run() {
 					stopMe();
+					dht.stopMe();
 				}
 			}.start();
 			break;
 		case Command.ARE_YOU_ALIVE:
 			response = Response.I_AM_ALIVE;
 			break;
+		case Command.PASS_REQUEST:
+			byte[] parsedRequest = new byte[request.length - 9];
+			byte[] ip = new byte[4];
+			byte[] port = new byte[4];
+
+			System.arraycopy(request, Code.CMD_LENGTH, ip, 0, 4);
+			System.arraycopy(request, Code.CMD_LENGTH + 4, port, 0, 4);
+			System.arraycopy(request, Code.CMD_LENGTH + 8, parsedRequest, 0,
+					request.length - 9);
+
+			InetAddress src;
+			try {
+				src = InetAddress.getByAddress(ip);
+			} catch (UnknownHostException e) {
+				System.err
+						.println("PASS_REQUEST:ip address corrupted, dropping message.");
+				return;
+			}
+			int intPort = ByteBuffer.wrap(port).getInt(); // TODO not sure if
+															// this works
+			handleRequest(uniqueRequestID, parsedRequest, src, intPort);
+			return;
 		default:
 			response = Response.UNRECOGNIZED;
 			break;
@@ -193,5 +247,11 @@ public class KVServer implements RequestListener {
 		byte[] key = new byte[Code.KEY_LENGTH];
 		System.arraycopy(request, Code.CMD_LENGTH, key, 0, Code.KEY_LENGTH);
 		return DatatypeConverter.printHexBinary(key);
+	}
+
+	private boolean isKeyInRange(byte[] request) {
+		byte[] key = new byte[Code.KEY_LENGTH];
+		System.arraycopy(request, Code.CMD_LENGTH, key, 0, Code.KEY_LENGTH);
+		return dht.isKeyInRange(key);
 	}
 }
