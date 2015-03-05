@@ -11,8 +11,10 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.Semaphore;
 
 // Circular DHT: Node x key range = (previous node + 1) to x
 public class DHT extends Thread {
@@ -20,10 +22,13 @@ public class DHT extends Thread {
 	/**
 	 * InetAddress of the successor of this node
 	 */
-	private InetAddress[] successor = new InetAddress[2];
-	private int[] successorPort = new int[2];
-	private int[] successorUDPPort = new int[2];
+	private ArrayList<Successor> successor = new ArrayList<Successor>();
+	private int maxSuccessor = 5;
+	// private InetAddress[] successor = new InetAddress[2];
+	// private int[] successorPort = new int[2];
+	// private int[] successorUDPPort = new int[2];
 	private Object successorLock = new Object();
+	// private boolean[] isDead = new boolean[2];
 
 	/**
 	 * This node stores all keys from startKey to endKey. Notice that endKey =
@@ -44,12 +49,14 @@ public class DHT extends Thread {
 
 	private Timer successorChecker = new Timer();
 	private boolean running = true;
-	private int numChecks = 0;
 
 	// used for setting up
 	private boolean initialNode;
 	private String initialNodeName;
 	private int initialNodePort;
+
+	// sort successor lock
+	private Semaphore sort = new Semaphore(1);
 
 	/**
 	 * Creates an Object which keeps track of the membership of the DHT
@@ -61,6 +68,8 @@ public class DHT extends Thread {
 	 *            will contact this node for DHT membership information
 	 * @param port
 	 *            - port of the above
+	 * @param UDPPort
+	 *            - client port
 	 */
 	public DHT(boolean initialNode, String initialNodeName, int port,
 			int UDPPort) {
@@ -86,7 +95,7 @@ public class DHT extends Thread {
 
 		try {
 			if (initialNode) {
-				serverSocket = new ServerSocket(7775);
+				serverSocket = new ServerSocket(7775); // bind to default port
 			} else {
 				serverSocket = new ServerSocket(0); // bind to a random port
 			}
@@ -170,10 +179,12 @@ public class DHT extends Thread {
 				} else if (input.equals("fail")) {
 					BigInteger startKey = getStartKey(in.readLine());
 					synchronized (startKeyLock) {
-						this.startKey = startKey;
+						if (startKey.compareTo(this.startKey) != 0) {
+							this.startKey = startKey;
+						}
 					}
 				} else if (input.equals("getSuccessor")) {
-					sendFirstSuccessor(out);
+					sendAllSuccessor(out);
 				} else if (input.equals("alive")) {
 					out.println("yes");
 				} else if (input.equals("update")) {
@@ -188,17 +199,17 @@ public class DHT extends Thread {
 			} catch (NullPointerException npe) {
 				// probably means it is communicating to has died
 				// or the dht is shutting down
-				if (!serverSocket.isClosed()) {
-					System.err.println("DHT server failed! -> NPE");
-					npe.printStackTrace();
-				}
+
+				System.err.println("DHT server failed! -> NPE");
+				npe.printStackTrace();
+
 			} catch (IOException e) {
 				// probably means it is communicating to has died
 				// or the dht is shutting down
-				if (!serverSocket.isClosed()) {
-					System.err.println("DHT server failed! -> IOException");
-					e.printStackTrace();
-				}
+
+				System.err.println("DHT server failed! -> IOException");
+				e.printStackTrace();
+
 			}
 		}
 	}
@@ -215,39 +226,87 @@ public class DHT extends Thread {
 		return getPositiveBigInteger(hash);
 	}
 
+	// TODO: maybe UDP needs to be more fault tolerant
+	// what if the server died? the msg gets dropped
+	// TODO faster passing
 	public Successor getFirstSuccessor() {
-		InetAddress s;
-		int udpport;
+		Successor s = null;
 		synchronized (successorLock) {
-			s = successor[0];
-			udpport = successorUDPPort[0];
-		}
-		return new Successor(s, udpport);
-	}
-
-	private void sendFirstSuccessor(PrintWriter out) {
-		String successorName = null;
-		int port = 0;
-		int udpPort = 0;
-		boolean isNull = true;
-		synchronized (successorLock) {
-			if (successor[0] != null) {
-				isNull = false;
-				successorName = successor[0].getHostAddress();
-				port = successorPort[0];
-				udpPort = successorUDPPort[0];
+			for (Successor su : successor) {
+				if (su.isAlive()) {
+					s = su;
+					break;
+				}
 			}
 		}
-		// if the variable are not initialized, then send ""
-		if (isNull) {
-			out.println("");
-			out.println("");
-			out.println("");
-		} else {
-			out.println(successorName);
-			out.println(port);
-			out.println(udpPort);
+		return s;
+	}
+
+	public Successor closestSuccessorTo(byte[] key) {
+		ArrayList<Successor> a = getCopy();
+		BigInteger wrapKey = positiveBigIntegerHash(key);
+		BigInteger startKey = circularPlusOne(endKey);
+
+		for (Successor s : a) {
+			if (s.isAlive()) {
+				BigInteger endKey = positiveBigIntegerHash(s.ip.getAddress());
+
+				if (endKey.compareTo(startKey) > 0) {
+					if (wrapKey.compareTo(startKey) >= 0
+							&& wrapKey.compareTo(endKey) <= 0) {
+						return s;
+					}
+				} else {
+					if (wrapKey.compareTo(startKey) >= 0
+							|| wrapKey.compareTo(endKey) <= 0) {
+						return s;
+					}
+				}
+			}
 		}
+		return getLastSuccessor();
+	}
+
+	private Successor getLastSuccessor() {
+		Successor s = null;
+		synchronized (successorLock) {
+			for (int i = successor.size() - 1; i >= 0; i--) {
+				Successor su = successor.get(i);
+				if (su.isAlive()) {
+					s = su;
+					break;
+				}
+			}
+		}
+		return s;
+	}
+
+	// send successor, regardless of deadness or aliveness for correctness of
+	// update need to be held to ensure correctness
+	private void sendAllSuccessor(PrintWriter out) {
+
+		ArrayList<Successor> copy = getCopy();
+
+		String successorName = "";
+		String port = "";
+		String udpPort = "";
+
+		for (int i = 0; i < copy.size(); i++) {
+			Successor s = copy.get(i);
+			if (!s.canBeRemoved()) {
+				successorName += s.ip.getHostAddress() + "|";
+				port += s.tcpPort + "|";
+				udpPort += s.udpPort + "|";
+			}
+		}
+
+		successorName = successorName.substring(0, successorName.length() - 1);
+		port = port.substring(0, port.length() - 1);
+		udpPort = udpPort.substring(0, udpPort.length() - 1);
+
+		out.println(successorName);
+		out.println(port);
+		out.println(udpPort);
 	}
 
 	static private InetAddress getByName(String name) {
@@ -292,13 +351,12 @@ public class DHT extends Thread {
 				e.printStackTrace();
 				// above operation didn't finish, assume the server
 				// it was talking to has died, so do nothing
+				// should not happen ever
 				return;
 			}
 			if (initialNode == true) {
 				initialNode = false;
-				successor[0] = inetNode;
-				successorPort[0] = port;
-				successorUDPPort[0] = udpPort;
+				successor.add(new Successor(inetNode, port, udpPort));
 				startCheckSuccessor();
 			} else {
 				update(inetNode.getHostAddress(), thisNode.getHostAddress(),
@@ -318,23 +376,25 @@ public class DHT extends Thread {
 
 		if (!newNode.equals(thisNode.getHostAddress())) {
 			synchronized (successorLock) {
-				if (oldNode.equals(successor[0].getHostAddress())) {
-					successor[1] = successor[0];
-					successorPort[1] = successorPort[0];
-					successorUDPPort[1] = successorUDPPort[0];
-
-					successor[0] = inetNewNode;
-					successorPort[0] = newPort;
-					successorUDPPort[0] = udpPort;
-				} else if (oldNode.equals(successor[1].getHostAddress())) {
-					successor[1] = inetNewNode;
-					successorPort[1] = newPort;
-					successorUDPPort[1] = udpPort;
+				for (int i = 0; i < successor.size(); i++) {
+					String successorIP = successor.get(i).ip.getHostAddress();
+					// kill the msg, it has been passed too many times
+					if (successorIP.equals(newNode)) {
+						return;
+					}
+					if (successorIP.equals(oldNode)) {
+						successor.add(i, new Successor(inetNewNode, newPort,
+								udpPort));
+						break;
+					}
 				}
 			}
 		}
+
+		// TODO: in extreme cases, update should have a hop count
+
 		// TODO: the node should update it self first
-		// in case it is its own successor
+		// in case it is its own successor, but this should not happen
 		if (oldNode.equals(thisNode.getHostAddress())) {
 			return;
 		}
@@ -342,37 +402,13 @@ public class DHT extends Thread {
 	}
 
 	private void update(String newNode, String oldNode, int newPort, int udpPort) {
-		Socket clientSocket = null;
-		try {
-			InetAddress s;
-			int port;
-			synchronized (successorLock) {
-				s = successor[0];
-				port = successorPort[0];
-			}
-			clientSocket = new Socket(s, port);
-
-			PrintWriter out = new PrintWriter(clientSocket.getOutputStream(),
-					true);
-			if (VERBOSE) {
-				System.out.println("update called: newNode:" + newNode
-						+ " oldNode:" + oldNode + " newPort:" + newPort);
-			}
-
-			out.println("update");
-			out.println(newNode);
-			out.println(oldNode);
-			out.println(newPort);
-			out.println(udpPort);
-
-			clientSocket.close();
-
-		} catch (IOException e) {
-			// TODO: update needs to be changed due to simultaneous node failure
-			// not sure what will happen
-			System.err.println("DHT.update() failed!");
-			e.printStackTrace();
+		if (VERBOSE) {
+			System.out.println("update called: newNode:" + newNode
+					+ " oldNode:" + oldNode + " newPort:" + newPort);
 		}
+		String[] msg = new String[] { "update", newNode, oldNode,
+				String.valueOf(newPort), String.valueOf(udpPort) };
+		forward(msg, 0);
 	}
 
 	private static byte[] hash(byte[] data) {
@@ -410,37 +446,17 @@ public class DHT extends Thread {
 
 			clientSocket.close();
 		} catch (IOException e) {
-			// TODO: what happens during simultaneous failures?
 			System.err.println("DHT.sendInitialJoinRequest() failed!");
+			System.err.println("Server shutting down...");
 			e.printStackTrace();
+			System.exit(1);
 		}
 	}
 
 	private void passJoin(InetAddress inetNode, int port, int udpPort) {
-		Socket clientSocket = null;
-		try {
-			InetAddress s;
-			int p;
-			synchronized (successorLock) {
-				s = successor[0];
-				p = successorPort[0];
-			}
-			clientSocket = new Socket(s, p);
-
-			PrintWriter out = new PrintWriter(clientSocket.getOutputStream(),
-					true);
-
-			out.println("join");
-			out.println(inetNode.getHostAddress());
-			out.println(port);
-			out.println(udpPort);
-
-			clientSocket.close();
-		} catch (IOException e) {
-			// TODO: what happens during simultaneous failures?
-			System.err.println("DHT.passJoin() failed!");
-			e.printStackTrace();
-		}
+		String[] msg = new String[] { "join", inetNode.getHostAddress(),
+				String.valueOf(port), String.valueOf(udpPort) };
+		forward(msg, 0);
 	}
 
 	private void done(String successor, String startKey, int port, int udpPort) {
@@ -451,16 +467,14 @@ public class DHT extends Thread {
 		InetAddress s = getByName(successor);
 
 		synchronized (successorLock) {
-			this.successor[0] = s;
-			this.successorPort[0] = port;
-			this.successorUDPPort[0] = udpPort;
+			this.successor.add(new Successor(s, port, udpPort));
 		}
-		this.getAndSetSuccessorFrom(s, port, 1);
 
 		synchronized (startKeyLock) {
 			this.startKey = new BigInteger(startKey);
 		}
 
+		sortSuccessor();
 		startCheckSuccessor();
 	}
 
@@ -492,126 +506,15 @@ public class DHT extends Thread {
 	}
 
 	private void checkSuccessor() {
-		Socket clientSocket = null;
-		try {
-			InetAddress s;
-			int p;
-			synchronized (successorLock) {
-				s = successor[0];
-				p = successorPort[0];
-			}
-			if (VERBOSE) {
-				System.out.println("checkSuccessor() on " + s.getHostAddress()
-						+ ":" + p);
-			}
-
-			clientSocket = new Socket(s, p);
-
-			BufferedReader in = new BufferedReader(new InputStreamReader(
-					clientSocket.getInputStream()));
-			PrintWriter out = new PrintWriter(clientSocket.getOutputStream(),
-					true);
-
-			out.println("alive");
-			String reply = in.readLine();
-
-			if (!reply.equals("yes")) {
-				System.err
-						.println("Server is alive but it's not replying \"yes\"...");
-				System.err.println("it's replying: " + reply);
-			}
-
-			clientSocket.close();
-
-			// success, reset numCheck
-			numChecks = 0;
-			// TODO periodically update its own successor
-			// this.getAndSetSuccessorFrom(s, p, 1);
-
-			// TODO: what happens during simultaneous failures?
-			// cannot connect to successor, assume it is dead
-			// it should try again before contacting successor[1]
-		} catch (Exception e) { // catching IO and NPE
-			// if (numChecks == 0) {
-			// numChecks++;
-			// return;
-			// }
-			try {
-				InetAddress s;
-				int p;
-				synchronized (successorLock) {
-					s = successor[1];
-					p = successorPort[1];
-				}
-				if (VERBOSE) {
-					System.out.println("Node failure occurred!");
-					System.out.println("Will try to connect to "
-							+ s.getHostAddress() + ":" + p);
-
-				}
-				clientSocket = new Socket(s, p);
-
-				PrintWriter out = new PrintWriter(
-						clientSocket.getOutputStream(), true);
-
-				out.println("fail");
-				out.println(thisNode.getHostAddress());
-
-				clientSocket.close();
-			} catch (IOException e1) {
-				System.err
-						.println("DHT.checkSuccessor() failed! Both successor died :(");
-				// both successor died
-				e1.printStackTrace();
-				System.exit(1);
-			}
-			InetAddress s;
-			int p;
-			synchronized (successorLock) {
-				s = successor[1];
-				p = successorPort[1];
-				successor[0] = successor[1];
-				successorPort[0] = successorPort[1];
-			}
-
-			getAndSetSuccessorFrom(s, p, 1);
+		String[] msg = new String[] { "alive" };
+		String[] reply = forward(msg, 1);
+		if (!("yes".equals(reply[0]))) {
+			System.err
+					.println("Server is alive but it's not replying \"yes\"...");
+			System.err.println("it's replying: " + reply[0]);
 		}
-	}
 
-	private void getAndSetSuccessorFrom(InetAddress here, int port, int which) {
-		Socket clientSocket = null;
-		String reply = null;
-		String returnPort = null;
-		try {
-			clientSocket = new Socket(here, port);
-
-			BufferedReader in = new BufferedReader(new InputStreamReader(
-					clientSocket.getInputStream()));
-			PrintWriter out = new PrintWriter(clientSocket.getOutputStream(),
-					true);
-
-			out.println("getSuccessor");
-			reply = in.readLine();
-			returnPort = in.readLine();
-
-			clientSocket.close();
-		} catch (IOException e) {
-			System.err.println("DHT.getSuccessorFrom() failed!");
-			e.printStackTrace();
-		}
-		if (reply == null || returnPort == null) {
-			// probably mean who this guy is talking to has died
-			// TODO: what happens during simultaneous failures?
-			return;
-		}
-		// this means there are currently no successor (ie only 2 nodes in DHT)
-		if (reply.equals("") || returnPort.equals("")) {
-			return;
-		}
-		synchronized (successorLock) {
-			this.successor[which] = getByName(reply);
-			this.successorPort[which] = Integer.parseInt(returnPort);
-		}
+		sortSuccessor();
 	}
 
 	static private BigInteger getPositiveBigInteger(byte[] data) {
@@ -653,12 +556,338 @@ public class DHT extends Thread {
 	}
 
 	public class Successor {
-		public int udpPort;
-		public InetAddress ip;
+		final public int udpPort;
+		final public InetAddress ip;
+		final public int tcpPort;
+		private boolean isAlive = true;
+		private boolean canBeRemoved = false;
 
-		public Successor(InetAddress ip, int udpPort) {
+		public Successor(InetAddress ip, int tcpPort, int udpPort) {
 			this.udpPort = udpPort;
 			this.ip = ip;
+			this.tcpPort = tcpPort;
+		}
+
+		public synchronized boolean isAlive() {
+			return isAlive;
+		}
+
+		public void setDead() {
+			synchronized (this) {
+				if (!isAlive) {
+					return;
+				}
+				this.isAlive = false;
+			}
+
+			new Thread() {
+				@Override
+				public void run() {
+					try {
+						// when a dead node is detected, how long until the
+						// entry
+						// can be safely removed
+						sleep(20000);
+					} catch (InterruptedException e) {
+					}
+					canBeRemoved = true;
+				}
+			}.start();
+		}
+
+		public boolean canBeRemoved() {
+			return canBeRemoved;
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private ArrayList<Successor> getCopy() {
+		ArrayList<Successor> clone;
+		synchronized (successorLock) {
+			clone = (ArrayList<Successor>) successor.clone();
+		}
+		return clone;
+	}
+
+	/**
+	 * Will forward msg to the next successor that is alive. It will return any
+	 * messages that matches the expectedLinesReturned otherwise it will try the
+	 * next sucessor that is alive. If a successor is found dead, it will
+	 * initiate the protocol to remove the dead successor. If all successors are
+	 * dead, the server will shutdown.
+	 * 
+	 * @param msg
+	 * @param expectedLinesReturned
+	 * @return
+	 */
+	private String[] forward(String[] msg, int expectedLinesReturned) {
+		String[] reply = new String[expectedLinesReturned];
+		Socket clientSocket;
+
+		ArrayList<Successor> copy = getCopy();
+
+		int i;
+		for (i = 0; i < copy.size(); i++) {
+			Successor s = copy.get(i);
+			if (!s.isAlive()) {
+				if (VERBOSE) {
+					System.out.println("successor " + i + " is dead.");
+				}
+				continue;
+			}
+
+			if (VERBOSE) {
+				System.out.println("sending to ip:" + s.ip.getHostAddress()
+						+ "@" + s.tcpPort);
+			}
+
+			try {
+				clientSocket = new Socket(s.ip, s.tcpPort);
+
+				PrintWriter out = new PrintWriter(
+						clientSocket.getOutputStream(), true);
+				for (int j = 0; j < msg.length; j++) {
+					if (VERBOSE) {
+						System.out.println("sending:" + msg[j]);
+					}
+					out.println(msg[j]);
+				}
+				// if we are expecting a reply
+				if (expectedLinesReturned > 0) {
+					BufferedReader in = new BufferedReader(
+							new InputStreamReader(clientSocket.getInputStream()));
+
+					String line;
+					int j;
+
+					// read in the required lines
+					for (j = 0; j < expectedLinesReturned; j++) {
+						if ((line = in.readLine()) != null) {
+							if (VERBOSE) {
+								System.out.println("reply:" + line);
+							}
+							reply[j] = line;
+						} else {
+							// we did not get enough replies, probably mean this
+							// successor is dead
+							throw new IOException(
+									"incorrect # of lines returned");
+						}
+					}
+				}
+
+				// success and we are done
+				clientSocket.close();
+				break;
+			} catch (IOException e) {
+				// if any of the read or write operations fails, control will
+				// continue here, we will log the server that had failed
+				// and try the next server
+				s.setDead();
+				if (VERBOSE) {
+					System.out.println("node " + i + " just died. msg:"
+							+ e.getMessage());
+					e.printStackTrace();
+				}
+			}
+		}
+
+		if (i == copy.size()) {
+			System.err
+					.println("DHT.forward(): All successors are dead. Server shutting down...");
+			System.err.println("sucessor.size(): " + copy.size() + " i: " + i);
+			System.exit(1);
+		}
+
+		return reply;
+	}
+
+	// TODO this needs to be called by more things
+	// should be call in a Thread after a forward() fail
+	private void sortSuccessor() {
+		if (sort.tryAcquire()) {
+			ArrayList<Successor> alive = new ArrayList<Successor>();
+			ArrayList<Successor> weededList = new ArrayList<Successor>();
+
+			// remove all dead successor that can be safely removed
+			synchronized (successorLock) {
+				for (int i = 0; i < successor.size(); i++) {
+					Successor s = successor.get(i);
+					if (s.isAlive()) {
+						alive.add(s);
+					}
+					if (!s.canBeRemoved()) {
+						weededList.add(s);
+					}
+				}
+				successor = weededList;
+			}
+
+			if (alive.size() == 0) {
+				System.err
+						.println("All successors are dead. Server shutting down...");
+				System.exit(1);
+			}
+
+			ArrayList<Successor> newSuccessor = new ArrayList<Successor>();
+
+			// get successor, start from the furthest one
+			if (alive.size() != maxSuccessor) {
+				for (int i = alive.size() - 1; i >= 0; i--) {
+					Successor s = alive.get(i);
+
+					Socket clientSocket;
+					String[] ip = null;
+					String[] port = null;
+					String[] udp = null;
+
+					try {
+						clientSocket = new Socket(s.ip, s.tcpPort);
+
+						BufferedReader in = new BufferedReader(
+								new InputStreamReader(
+										clientSocket.getInputStream()));
+						PrintWriter out = new PrintWriter(
+								clientSocket.getOutputStream(), true);
+
+						out.println("getSuccessor");
+
+						String l1 = in.readLine();
+						String l2 = in.readLine();
+						String l3 = in.readLine();
+
+						if (VERBOSE) {
+							System.out.println("returned successor:");
+							System.out.println("ip   : " + l1);
+							System.out.println("port : " + l2);
+							System.out.println("uport: " + l3);
+						}
+
+						if (l1.contains("|")) {
+							ip = l1.split("\\|");
+							port = l2.split("\\|");
+							udp = l3.split("\\|");
+						} else {
+							ip = new String[] { l1 };
+							port = new String[] { l2 };
+							udp = new String[] { l3 };
+						}
+
+						clientSocket.close();
+					} catch (NullPointerException | IOException e) {
+						// node this was talking to probably died
+						// remove it if it's dead
+						s.setDead();
+						alive.remove(i);
+						continue;
+					}
+
+					// everything died
+					if (alive.size() == 0) {
+						System.err
+								.println("All successors are dead. Server shutting down...");
+						System.exit(1);
+					}
+
+					// add new successor to list
+					// stopping before adding itself
+					// TODO, node should be able to recover when it just has
+					// itself
+					// in the whole ring (does not kill itself)
+					int maxAdd = maxSuccessor - alive.size() < ip.length ? maxSuccessor
+							- alive.size()
+							: ip.length;
+					ArrayList<Successor> copy = getCopy();
+					for (int j = 0; j < maxAdd; j++) {
+						InetAddress newNode = getByName(ip[j]);
+						// stopping before adding it self
+						if (newNode.equals(thisNode)) {
+							break;
+						}
+						// do not add duplicates
+						// happens when ring is small and some node dies
+						boolean addFlag = true;
+						for (int k = 0; k < copy.size(); k++) {
+							// do not add duplicate nodes
+							if (newNode.equals(copy.get(k).ip)) {
+								addFlag = false;
+								break;
+							}
+						}
+						if (addFlag) {
+							newSuccessor.add(new Successor(newNode, Integer
+									.parseInt(port[j]), Integer
+									.parseInt(udp[j])));
+						}
+					}
+					break;
+				}
+			}
+
+			ArrayList<Successor> copy;
+			// copy the result over to the master list
+			synchronized (successorLock) {
+				for (int i = 0; i < newSuccessor.size(); i++) {
+					successor.add(newSuccessor.get(i));
+				}
+				copy = getCopy();
+			}
+
+			// check if all nodes in new are alive
+			// if not call setDead()
+			Thread[] t = new Thread[copy.size()];
+			for (int i = 0; i < copy.size(); i++) {
+				t[i] = new AliveCheck(copy.get(i));
+				t[i].start();
+			}
+			for (int i = 0; i < copy.size(); i++) {
+				try {
+					t[i].join();
+				} catch (InterruptedException e) {
+				}
+			}
+
+			forward(new String[] { "fail", thisNode.getHostAddress() }, 0);
+			sort.release();
+		}
+	}
+
+	public class AliveCheck extends Thread {
+		Successor s;
+
+		public AliveCheck(Successor s) {
+			this.s = s;
+		}
+
+		@Override
+		public void run() {
+			if (!s.isAlive()) {
+				return;
+			}
+
+			Socket clientSocket;
+			try {
+				clientSocket = new Socket(s.ip, s.tcpPort);
+
+				BufferedReader in = new BufferedReader(new InputStreamReader(
+						clientSocket.getInputStream()));
+				PrintWriter out = new PrintWriter(
+						clientSocket.getOutputStream(), true);
+
+				out.println("alive");
+				String reply = in.readLine();
+
+				if (!reply.equals("yes")) {
+					System.err
+							.println("Server is alive but it's not replying \"yes\"...");
+					System.err.println("it's replying: " + reply);
+				}
+
+				clientSocket.close();
+			} catch (IOException | NullPointerException e) {
+				// assume node is dead
+				s.setDead();
+			}
 		}
 	}
 }

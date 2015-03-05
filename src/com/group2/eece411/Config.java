@@ -58,6 +58,8 @@ public class Config {
 
 			public final static byte PASS_REQUEST = 0x30;
 			public final static byte RETURN_RESPONSE = 0x31;
+
+			public final static byte GET_ALL_NODES = 0x40;
 		}
 
 		public static class Response {

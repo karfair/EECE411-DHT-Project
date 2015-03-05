@@ -93,6 +93,86 @@ public class UDPClient implements Closeable {
 		}
 	}
 
+	public byte[] sendAndWaitFor(byte[] data, int time) throws IOException {
+		byte[] rcvMsg = null;
+		try {
+			// put the "unique request ID" in the sendBuffer in big endian
+			// format
+			byte[] uniqueRequestID = getUniqueRequestID();
+			System.arraycopy(uniqueRequestID, 0, sendBuf, 0,
+					uniqueRequestID.length);
+
+			// put the data in the sendBuffer
+			System.arraycopy(data, 0, sendBuf, uniqueRequestID.length,
+					data.length);
+
+			// send packet init
+			DatagramPacket packet = new DatagramPacket(sendBuf,
+					uniqueRequestID.length + data.length, destAddress, destPort);
+
+			// receive packet init
+			DatagramPacket rcvpacket = new DatagramPacket(rcvBuf, rcvBuf.length);
+
+			// resets timeout
+			int timeout = time;
+			socket.setSoTimeout(timeout);
+
+			// receive buffer
+			byte[] rcv = null;
+
+			// sends and waits for reply (NUM_TRIES times, doubling the timeout
+			// on each packet lost)
+			int i;
+			for (i = 0; i < NUM_TRIES; i++) {
+				socket.send(packet);
+				try {
+					for (int j = 0; j < NUM_TRIES; j++) {
+						// receive and extract data
+						socket.receive(rcvpacket);
+						rcv = rcvpacket.getData();
+
+						// checks if uniqueReplyID == uniqueSendID
+						if (idEquals(uniqueRequestID, rcv)) {
+							break;
+						} else {
+							// wrong id
+						}
+					}
+					if (idEquals(uniqueRequestID, rcv)) {
+						break;
+					}
+				} catch (IOException e) {
+					// timedOut
+					// intentionally empty
+				}
+
+				// times the timeout by the multiplier
+				timeout *= TIMEOUT_MULTIPLIER;
+				socket.setSoTimeout(timeout);
+			}
+
+			if (i == NUM_TRIES) {
+				String msg = "Send failed: incorrect/no reponse from server after "
+						+ NUM_TRIES
+						+ " tries. uniqueID: "
+						+ DatatypeConverter.printHexBinary(uniqueRequestID);
+				throw new IOException(msg);
+			}
+
+			// gets the data minus the unique reply id
+			// TODO this should just be the msg, not the whole buffer, see below
+			rcvMsg = new byte[rcvpacket.getLength() - Config.REQUEST_ID_LENGTH];
+			System.arraycopy(rcv, Config.REQUEST_ID_LENGTH, rcvMsg, 0,
+					rcvpacket.getLength() - Config.REQUEST_ID_LENGTH);
+
+		} catch (IOException e) {
+			throw e;
+		}
+
+		// sends back data to the upper layer
+		return rcvMsg;
+	}
+
 	public byte[] sendAndWait(byte[] data) throws IOException {
 		byte[] rcvMsg = null;
 		try {

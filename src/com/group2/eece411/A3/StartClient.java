@@ -1,5 +1,8 @@
 package com.group2.eece411.A3;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.xml.bind.DatatypeConverter;
@@ -72,6 +75,36 @@ public class StartClient {
 		if (client.get(defaultKey) == null) {
 			System.out.println("3rd get: success");
 		}
+
+		// get all node and print them out
+		byte[] ret;
+		InetAddress[] node = null;
+		int[] nodePort = null;
+		if ((ret = client.getAllNodes()) != null) {
+			byte[] inet = new byte[4];
+			byte[] port = new byte[4];
+			node = new InetAddress[ret.length / 8];
+			nodePort = new int[ret.length / 8];
+
+			System.out.println("getAllNodes() passed! len:" + ret.length);
+
+			for (int i = 0; i < ret.length / 8; i++) {
+				System.arraycopy(ret, i * 8, inet, 0, 4);
+				System.arraycopy(ret, i * 8 + 4, port, 0, 4);
+				try {
+					node[i] = InetAddress.getByAddress(inet);
+					nodePort[i] = ByteBuffer.wrap(port).getInt();
+
+					System.out.println(node[i].getHostAddress() + "@"
+							+ nodePort[i]);
+				} catch (UnknownHostException e) {
+				}
+			}
+		} else {
+			System.out.println("getAllNodes() failed!");
+		}
+
+		// finish
 		client.close();
 
 		// stress testing
@@ -84,7 +117,8 @@ public class StartClient {
 		// set up some client
 		ClientThread[] c = new ClientThread[numClient];
 		for (int i = 0; i < c.length; i++) {
-			c[i] = new ClientThread(amount, host, bytesSent, p, n, l, v);
+			c[i] = new ClientThread(amount, host, bytesSent, p, n, l, v, node,
+					nodePort);
 		}
 
 		// start timing

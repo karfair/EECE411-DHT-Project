@@ -30,6 +30,10 @@ public class KVClient implements Closeable {
 		}
 	}
 
+	public KVClient(String destHost, int destPort) {
+		u = new UDPClient(destHost, destPort);
+	}
+
 	public boolean put(byte[] key, byte[] value) {
 		// check if inputs are valid
 		if (!isValidKey(key)) {
@@ -68,8 +72,6 @@ public class KVClient implements Closeable {
 			return false;
 		}
 
-		// TODO check if rcv isnt null and valid
-
 		// check if response is correct and check if put operation is successful
 		if (rcv[0] == Response.SUCCESS) {
 			return true;
@@ -97,7 +99,6 @@ public class KVClient implements Closeable {
 			return null;
 		}
 
-		// TODO check if rcv isnt null and valid and other checks
 		if (rcv[0] == Response.SUCCESS) {
 			// checks if the value length matches the actual value length
 			byte[] valueLength = new byte[Integer.BYTES];
@@ -138,8 +139,6 @@ public class KVClient implements Closeable {
 			return false;
 		}
 
-		// TODO check if rcv isnt null and valid
-
 		// check if response is correct and check if remove operation is
 		// successful
 		if (rcv[0] == Response.SUCCESS) {
@@ -149,7 +148,7 @@ public class KVClient implements Closeable {
 		}
 	}
 
-	public boolean kill() {
+	public boolean killAndWait() {
 		byte[] request = new byte[Code.CMD_LENGTH];
 		request[0] = Command.SHUTDOWN;
 		byte[] rcv = null;
@@ -164,6 +163,38 @@ public class KVClient implements Closeable {
 			return true;
 		}
 		return false;
+	}
+
+	public void kill() {
+		byte[] request = new byte[Code.CMD_LENGTH];
+		request[0] = Command.SHUTDOWN;
+		try {
+			u.sendAndWait(request);
+		} catch (IOException e) {
+		}
+		return;
+	}
+
+	public byte[] getAllNodes() {
+		byte[] request = new byte[Code.CMD_LENGTH];
+		request[0] = Command.GET_ALL_NODES;
+		byte[] rcv = null;
+		try {
+			rcv = u.sendAndWaitFor(request, 10000); // 10 sec
+		} catch (IOException e) {
+			System.out.println(e.getMessage());
+			return null;
+		}
+		if (rcv == null) {
+			return null;
+		} else if (rcv[0] == Response.SUCCESS) {
+			byte[] ret = new byte[rcv.length - 1];
+			System.arraycopy(rcv, 1, ret, 0, rcv.length - 1);
+			return ret;
+		} else {
+			System.out.println(rcv[0]);
+		}
+		return null;
 	}
 
 	// check is a node is alive at the IP&port inputed

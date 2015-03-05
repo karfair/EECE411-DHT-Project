@@ -1,5 +1,6 @@
 package com.group2.eece411.A3;
 
+import java.net.InetAddress;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -14,27 +15,39 @@ public class ClientThread extends Thread {
 	private int bytesSent = 0, p = 0, n = 0, l = 0, v = 0;
 	private AtomicInteger ab, ap, an, al, av;
 
+	private InetAddress[] nodes;
+	private int[] port;
+
 	public ClientThread(int amountToSend, String host, AtomicInteger bytesSent,
-			AtomicInteger p, AtomicInteger n, AtomicInteger l, AtomicInteger v) {
+			AtomicInteger p, AtomicInteger n, AtomicInteger l, AtomicInteger v,
+			InetAddress[] selection, int[] port) {
 		super();
 		this.amountToSend = amountToSend;
-		client = new KVClient(host);
+		// client = new KVClient(host);
 
 		ab = bytesSent;
 		ap = p;
 		an = n;
 		al = l;
 		av = v;
+
+		this.nodes = selection;
+		this.port = port;
 	}
 
 	@Override
 	public void run() {
+		KVClient[] clients = new KVClient[nodes.length];
+		for (int i = 0; i < clients.length; i++) {
+			clients[i] = new KVClient(nodes[i].getHostAddress(), port[i]);
+		}
 		for (int i = 0; i < amountToSend; i++) {
 			byte[] key = keygen();
 			byte[] val = valgen();
 			bytesSent += Code.KEY_LENGTH + Code.VALUE_LENGTH_LENGTH
 					+ val.length;
 
+			client = clients[r.nextInt(nodes.length)];
 			// see if put is working
 			if (!client.put(key, val)) {
 				System.out.println("put error!");
@@ -42,6 +55,7 @@ public class ClientThread extends Thread {
 				continue;
 			}
 
+			client = clients[r.nextInt(nodes.length)];
 			// see if the returned value is null
 			byte[] retVal = client.get(key);
 			if (retVal == null) {

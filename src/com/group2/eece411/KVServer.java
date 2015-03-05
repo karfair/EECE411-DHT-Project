@@ -96,6 +96,8 @@ public class KVServer implements RequestListener {
 			return;
 		}
 
+		System.out.println("request_length: " + request.length);
+
 		byte command = request[0];
 		byte response;
 		byte[] value = null;
@@ -199,6 +201,10 @@ public class KVServer implements RequestListener {
 			}
 			break;
 		case Command.SHUTDOWN:
+			// insta kill
+			System.exit(0);
+
+			// this wont be run
 			response = Response.SUCCESS;
 			new Thread() {
 				@Override
@@ -242,8 +248,7 @@ public class KVServer implements RequestListener {
 						.println("PASS_REQUEST:ip address corrupted, dropping message.");
 				return;
 			}
-			int intPort = ByteBuffer.wrap(port).getInt(); // TODO not sure if
-															// this works
+			int intPort = ByteBuffer.wrap(port).getInt();
 			int intSerPort = ByteBuffer.wrap(sPort).getInt();
 
 			if (command == Command.PASS_REQUEST) {
@@ -260,6 +265,43 @@ public class KVServer implements RequestListener {
 				}
 			}
 			break;
+		case Command.GET_ALL_NODES:
+			System.out.println("getallnodes");
+			InetAddress thisHost = dht.getLocalHost();
+			int thisPort = server.getPort();
+
+			if (!routeMsgTo) {
+				srcServer = dht.getLocalHost();
+				serverPort = server.getPort();
+			} else {
+				if (srcServer.equals(dht.getLocalHost())) {
+					// TODO for efficiency sake, right now the final server
+					// forward this msg to
+					// itself before giving it back to the client
+					response = Response.SUCCESS;
+					value = new byte[request.length - 1];
+					System.arraycopy(request, 1, value, 0, request.length - 1);
+					break;
+				}
+			}
+			DHT.Successor s = dht.getFirstSuccessor();
+
+			// create new request to be forwarded
+			byte[] newRequest = new byte[request.length + 8];
+			System.arraycopy(request, 0, newRequest, 0, request.length);
+
+			// copy in the passed in this server IP
+			byte[] serverAddress = thisHost.getAddress();
+			System.arraycopy(serverAddress, 0, newRequest, request.length, 4);
+
+			// copy over this server Port
+			byte[] udpPort = ByteBuffer.allocate(Integer.BYTES)
+					.putInt(thisPort).array();
+			System.arraycopy(udpPort, 0, newRequest, request.length + 4, 4);
+
+			server.forwardRequest(uniqueRequestID, newRequest, s.ip, s.udpPort,
+					srcAddr, srcPort, false, srcServer, serverPort);
+			return;
 		default:
 			response = Response.UNRECOGNIZED;
 			break;
@@ -302,5 +344,11 @@ public class KVServer implements RequestListener {
 		byte[] key = new byte[Code.KEY_LENGTH];
 		System.arraycopy(request, Code.CMD_LENGTH, key, 0, Code.KEY_LENGTH);
 		return dht.isKeyInRange(key);
+	}
+
+	private DHT.Successor closestSuccessorTo(byte[] request) {
+		byte[] key = new byte[Code.KEY_LENGTH];
+		System.arraycopy(request, Code.CMD_LENGTH, key, 0, Code.KEY_LENGTH);
+		return dht.closestSuccessorTo(request);
 	}
 }
