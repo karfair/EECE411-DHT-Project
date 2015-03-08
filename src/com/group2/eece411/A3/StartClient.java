@@ -34,7 +34,7 @@ public class StartClient {
 	public static void main(String[] args) {
 
 		int numClient = 5;
-		int amount = 5;
+		int amount = 10;
 		String host = "planetlab1.cs.ubc.ca";
 		// String host = "planetlab1.dojima.wide.ad.jp";
 		// String host = "roam1.cs.ou.edu";
@@ -173,7 +173,7 @@ public class StartClient {
 		// print out some stats
 		System.out.println("Stress test completed. put error: " + p.get()
 				+ " null error: " + n.get() + " len error: " + l.get()
-				+ " val error: " + v.get() + " remove error: " + v.get());
+				+ " val error: " + v.get() + " remove error: " + rem.get());
 		double timeTaken = (System.currentTimeMillis() - time) / 1000.0;
 		System.out.println("Time taken: " + timeTaken + " s. Bytes stored: "
 				+ bytesSent.get() + " Speed: " + (bytesSent.get() / timeTaken)
