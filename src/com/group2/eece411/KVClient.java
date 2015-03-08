@@ -34,11 +34,25 @@ public class KVClient implements Closeable {
 		u = new UDPClient(destHost, destPort);
 	}
 
+	public void setTimeOut(int timeout) {
+		u.setTimeOut(timeout);
+	}
+
+	public void setMultiplier(int multiplier) {
+		u.setMultiplier(multiplier);
+	}
+
+	public void setNumTries(int numTries) {
+		u.setNumTries(numTries);
+	}
+
 	public boolean put(byte[] key, byte[] value) {
 		// check if inputs are valid
 		if (!isValidKey(key)) {
+			System.err.println("put(): invalid key");
 			return false;
 		} else if (value == null) {
+			System.err.println("put(): invalid value");
 			return false;
 		}
 		int requestLength = Code.CMD_LENGTH + Code.KEY_LENGTH
@@ -68,7 +82,7 @@ public class KVClient implements Closeable {
 			rcv = u.sendAndWait(request);
 		} catch (IOException e) {
 			// e.printStackTrace();
-			System.err.println("no reply:" + e.getMessage());
+			System.err.println("put():no reply:" + e.getMessage());
 			return false;
 		}
 
@@ -76,13 +90,14 @@ public class KVClient implements Closeable {
 		if (rcv[0] == Response.SUCCESS) {
 			return true;
 		} else {
-			System.err.println("error code:" + rcv[0]);
+			System.err.println("put():error code:" + rcv[0]);
 			return false;
 		}
 	}
 
 	public byte[] get(byte[] key) {
 		if (!isValidKey(key)) {
+			System.err.println("get(): invalid key");
 			return null;
 		}
 
@@ -95,7 +110,7 @@ public class KVClient implements Closeable {
 		try {
 			rcv = u.sendAndWait(request);
 		} catch (IOException e) {
-			// e.printStackTrace();
+			System.err.println("get():no reply:" + e.getMessage());
 			return null;
 		}
 
@@ -117,12 +132,14 @@ public class KVClient implements Closeable {
 					data, 0, intValueLength);
 			return data;
 		} else {
+			System.err.println("get(): error code:" + rcv[0]);
 			return null;
 		}
 	}
 
 	public boolean remove(byte[] key) {
 		if (!isValidKey(key)) {
+			System.err.println("get(): invalid key");
 			return false;
 		}
 
@@ -135,7 +152,7 @@ public class KVClient implements Closeable {
 		try {
 			rcv = u.sendAndWait(request);
 		} catch (IOException e) {
-			// e.printStackTrace();
+			System.err.println("remove():no reply:" + e.getMessage());
 			return false;
 		}
 
@@ -144,6 +161,7 @@ public class KVClient implements Closeable {
 		if (rcv[0] == Response.SUCCESS) {
 			return true;
 		} else {
+			System.err.println("remove(): error code:" + rcv[0]);
 			return false;
 		}
 	}
@@ -169,7 +187,7 @@ public class KVClient implements Closeable {
 		byte[] request = new byte[Code.CMD_LENGTH];
 		request[0] = Command.SHUTDOWN;
 		try {
-			u.sendAndWait(request);
+			u.sendAndWaitFor(request, 50, 1, 1);
 		} catch (IOException e) {
 		}
 		return;
@@ -180,21 +198,22 @@ public class KVClient implements Closeable {
 		request[0] = Command.GET_ALL_NODES;
 		byte[] rcv = null;
 		try {
-			rcv = u.sendAndWaitFor(request, 10000); // 10 sec
+			rcv = u.sendAndWaitFor(request, 10000, 1, 5); // 10 sec
+															// 1 multiplier
+															// 5tries
 		} catch (IOException e) {
-			System.out.println(e.getMessage());
+			System.err.println("getAllNodes(): no reply: " + e.getMessage());
 			return null;
 		}
-		if (rcv == null) {
-			return null;
-		} else if (rcv[0] == Response.SUCCESS) {
+
+		if (rcv[0] == Response.SUCCESS) {
 			byte[] ret = new byte[rcv.length - 1];
 			System.arraycopy(rcv, 1, ret, 0, rcv.length - 1);
 			return ret;
 		} else {
-			System.out.println(rcv[0]);
+			System.out.println("getAllNodes(): error code:" + rcv[0]);
+			return null;
 		}
-		return null;
 	}
 
 	// check is a node is alive at the IP&port inputed

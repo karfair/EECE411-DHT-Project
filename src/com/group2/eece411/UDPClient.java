@@ -13,15 +13,18 @@ import javax.xml.bind.DatatypeConverter;
 
 public class UDPClient implements Closeable {
 
-	private final static int NUM_TRIES = 3;
-	private final static int TIMEOUT_MULTIPLIER = 2;
-	private final static int TIMEOUT_VALUE_MS = 100;
+	private final static int NUM_TRIES = 20;
+	private final static int TIMEOUT_MULTIPLIER = 1;
+	private final static int TIMEOUT_VALUE_MS = 400;
 
 	private int destPort;
 	private InetAddress destAddress = null;
 	private DatagramSocket socket = null;
 
 	private int defaultTimeout;
+	private int defaultMultiplier;
+	private int defaultTries;
+
 	private byte[] rcvBuf;
 	private byte[] sendBuf;
 
@@ -31,16 +34,27 @@ public class UDPClient implements Closeable {
 
 	public UDPClient(String destName, int destPort) {
 		this(destName, destPort, Config.MAX_UDP_PAYLOAD,
-				Config.MAX_UDP_PAYLOAD, TIMEOUT_VALUE_MS);
+				Config.MAX_UDP_PAYLOAD, TIMEOUT_VALUE_MS, TIMEOUT_MULTIPLIER,
+				NUM_TRIES);
+	}
+
+	public UDPClient(String destName, int destPort, int defaultTimeout,
+			int defaultMultiplier, int defaultTries) {
+		this(destName, destPort, Config.MAX_UDP_PAYLOAD,
+				Config.MAX_UDP_PAYLOAD, defaultTimeout, defaultMultiplier,
+				defaultTries);
 	}
 
 	public UDPClient(String destName, int destPort, int sendBufferSize,
-			int rcvBufferSize, int defaultTimeout) {
+			int rcvBufferSize, int defaultTimeout, int defaultMultiplier,
+			int defaultTries) {
 
 		rcvBuf = new byte[rcvBufferSize];
 		sendBuf = new byte[sendBufferSize];
 
 		this.defaultTimeout = defaultTimeout;
+		this.defaultMultiplier = defaultMultiplier;
+		this.defaultTries = defaultTries;
 
 		changeDest(destName, destPort);
 	}
@@ -62,7 +76,7 @@ public class UDPClient implements Closeable {
 			e.printStackTrace();
 			System.exit(1);
 		}
-		System.out.println("local udp port:" + socket.getLocalPort());
+		// System.out.println("local udp port:" + socket.getLocalPort());
 
 		// sets up part of the unique requestID
 
@@ -93,7 +107,20 @@ public class UDPClient implements Closeable {
 		}
 	}
 
-	public byte[] sendAndWaitFor(byte[] data, int time) throws IOException {
+	public void setTimeOut(int timeout) {
+		defaultTimeout = timeout;
+	}
+
+	public void setMultiplier(int multiplier) {
+		defaultMultiplier = multiplier;
+	}
+
+	public void setNumTries(int numTries) {
+		defaultTries = numTries;
+	}
+
+	public byte[] sendAndWaitFor(byte[] data, int time, int multiplier,
+			int tries) throws IOException {
 		byte[] rcvMsg = null;
 		try {
 			// put the "unique request ID" in the sendBuffer in big endian
@@ -123,10 +150,10 @@ public class UDPClient implements Closeable {
 			// sends and waits for reply (NUM_TRIES times, doubling the timeout
 			// on each packet lost)
 			int i;
-			for (i = 0; i < NUM_TRIES; i++) {
+			for (i = 0; i < tries; i++) {
 				socket.send(packet);
 				try {
-					for (int j = 0; j < NUM_TRIES; j++) {
+					for (int j = 0; j < tries; j++) {
 						// receive and extract data
 						socket.receive(rcvpacket);
 						rcv = rcvpacket.getData();
@@ -147,13 +174,13 @@ public class UDPClient implements Closeable {
 				}
 
 				// times the timeout by the multiplier
-				timeout *= TIMEOUT_MULTIPLIER;
+				timeout *= multiplier;
 				socket.setSoTimeout(timeout);
 			}
 
-			if (i == NUM_TRIES) {
+			if (i == tries) {
 				String msg = "Send failed: incorrect/no reponse from server after "
-						+ NUM_TRIES
+						+ tries
 						+ " tries. uniqueID: "
 						+ DatatypeConverter.printHexBinary(uniqueRequestID);
 				throw new IOException(msg);
@@ -203,10 +230,10 @@ public class UDPClient implements Closeable {
 			// sends and waits for reply (NUM_TRIES times, doubling the timeout
 			// on each packet lost)
 			int i;
-			for (i = 0; i < NUM_TRIES; i++) {
+			for (i = 0; i < defaultTries; i++) {
 				socket.send(packet);
 				try {
-					for (int j = 0; j < NUM_TRIES; j++) {
+					for (int j = 0; j < defaultTries; j++) {
 						// receive and extract data
 						socket.receive(rcvpacket);
 						rcv = rcvpacket.getData();
@@ -227,13 +254,13 @@ public class UDPClient implements Closeable {
 				}
 
 				// times the timeout by the multiplier
-				timeout *= TIMEOUT_MULTIPLIER;
+				timeout *= defaultMultiplier;
 				socket.setSoTimeout(timeout);
 			}
 
-			if (i == NUM_TRIES) {
+			if (i == defaultTries) {
 				String msg = "Send failed: incorrect/no reponse from server after "
-						+ NUM_TRIES
+						+ defaultTries
 						+ " tries. uniqueID: "
 						+ DatatypeConverter.printHexBinary(uniqueRequestID);
 				throw new IOException(msg);
