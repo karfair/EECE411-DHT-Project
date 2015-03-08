@@ -18,7 +18,11 @@ import java.util.concurrent.Semaphore;
 
 // Circular DHT: Node x key range = (previous node + 1) to x
 public class DHT extends Thread {
-	private static boolean VERBOSE = true;
+
+	private static final int DEFAULT_DHT_TCP_PORT = 7775;
+
+	private static boolean VERBOSE = false;
+	private static boolean LESS_VERBOSE = true;
 	/**
 	 * InetAddress of the successor of this node
 	 */
@@ -95,9 +99,12 @@ public class DHT extends Thread {
 
 		try {
 			if (initialNode) {
-				serverSocket = new ServerSocket(7775); // bind to default port
+				serverSocket = new ServerSocket(DEFAULT_DHT_TCP_PORT);
+				// bind to default port
 			} else {
-				serverSocket = new ServerSocket(0); // bind to a random port
+				serverSocket = new ServerSocket(DEFAULT_DHT_TCP_PORT);
+				// changed to a default port to facilitate joining
+
 			}
 		} catch (IOException e) {
 			System.err.println("DHT: Unable to create server socket!");
@@ -221,7 +228,7 @@ public class DHT extends Thread {
 	 *            - to be hashed, Big Endian format
 	 * @return
 	 */
-	private static BigInteger positiveBigIntegerHash(byte[] data) {
+	public static BigInteger positiveBigIntegerHash(byte[] data) {
 		byte[] hash = hash(data);
 		return getPositiveBigInteger(hash);
 	}
@@ -246,11 +253,12 @@ public class DHT extends Thread {
 		ArrayList<Successor> a = getCopy();
 		BigInteger wrapKey = positiveBigIntegerHash(key);
 		BigInteger startKey = circularPlusOne(endKey);
+		Successor last = null;
 
 		for (Successor s : a) {
 			if (s.isAlive()) {
 				BigInteger endKey = positiveBigIntegerHash(s.ip.getAddress());
-
+				last = s;
 				if (endKey.compareTo(startKey) > 0) {
 					if (wrapKey.compareTo(startKey) >= 0
 							&& wrapKey.compareTo(endKey) <= 0) {
@@ -264,7 +272,7 @@ public class DHT extends Thread {
 				}
 			}
 		}
-		return getLastSuccessor();
+		return last;
 	}
 
 	private Successor getLastSuccessor() {
@@ -711,14 +719,30 @@ public class DHT extends Thread {
 
 			// remove all dead successor that can be safely removed
 			synchronized (successorLock) {
-				for (int i = 0; i < successor.size(); i++) {
+				int aliveCount = 0; // so that we do not have more than N
+									// successor due to updates
+				for (int i = 0; i < successor.size()
+						&& aliveCount < maxSuccessor; i++) {
 					Successor s = successor.get(i);
 					if (s.isAlive()) {
+						aliveCount++;
 						alive.add(s);
 					}
 					if (!s.canBeRemoved()) {
 						weededList.add(s);
 					}
+
+				}
+				if (LESS_VERBOSE) {
+					String print = thisNode.getHostAddress() + "num_successor("
+							+ successor.size() + "):";
+					for (int i = 0; i < successor.size(); i++) {
+						Successor s = successor.get(i);
+						if (s.isAlive()) {
+							print += s.ip.getHostAddress() + "|";
+						}
+					}
+					System.out.println(print);
 				}
 				successor = weededList;
 			}
@@ -732,7 +756,7 @@ public class DHT extends Thread {
 			ArrayList<Successor> newSuccessor = new ArrayList<Successor>();
 
 			// get successor, start from the furthest one
-			if (alive.size() != maxSuccessor) {
+			if (alive.size() <= maxSuccessor) {
 				for (int i = alive.size() - 1; i >= 0; i--) {
 					Successor s = alive.get(i);
 
