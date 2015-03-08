@@ -18,11 +18,6 @@ public class Config {
 	 */
 	public final static int[] validPort = { 6772, 52180, 7632, 30541, 27411 };
 
-	/**
-	 * HostName of all nodes that might be active (currently unused)
-	 */
-	public final static String[] validNodes = { "192.168.0.1" };
-
 	public final static int MAX_APPLICATION_PAYLOAD = 16384;
 	public final static int MAX_UDP_PAYLOAD = MAX_APPLICATION_PAYLOAD
 			+ REQUEST_ID_LENGTH;
