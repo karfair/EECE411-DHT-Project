@@ -23,7 +23,7 @@ import com.group2.eece411.Config.Code.Command;
 public class UDPServer extends Thread {
 
 	private static final int MAX_THREADS = 4;
-	private static final int MAX_QUEUE = 20;
+	private static final int MAX_QUEUE = 40;
 
 	// hold on to responses for a while so they aren't repeated
 	// creates a processed response list
@@ -202,23 +202,25 @@ public class UDPServer extends Thread {
 				}
 				numThreads.release();
 			} else {
-				byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
-						+ Code.CMD_LENGTH];
+				// byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
+				// + Code.CMD_LENGTH];
 				// copy over unique id
-				System.arraycopy(data, 0, sendBuf, 0, Config.REQUEST_ID_LENGTH);
+				// System.arraycopy(data, 0, sendBuf, 0,
+				// Config.REQUEST_ID_LENGTH);
 				// put in error code
-				sendBuf[Config.REQUEST_ID_LENGTH] = Config.Code.Response.SYSTEM_OVERLOAD;
+				// sendBuf[Config.REQUEST_ID_LENGTH] =
+				// Config.Code.Response.SYSTEM_OVERLOAD;
 
 				// construct datagram
-				DatagramPacket d = new DatagramPacket(sendBuf,
-						Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH,
-						packet.getAddress(), packet.getPort());
+				// DatagramPacket d = new DatagramPacket(sendBuf,
+				// Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH,
+				// packet.getAddress(), packet.getPort());
 
-				try {
-					socket.send(d);
-				} catch (IOException e1) {
-					// e1.printStackTrace();
-				}
+				// try {
+				// socket.send(d);
+				// } catch (IOException e1) {
+				// e1.printStackTrace();
+				// }
 			}
 		}
 	}
@@ -230,7 +232,7 @@ public class UDPServer extends Thread {
 		 * processed packet (a response) with a uniqueRequestID, so that it does
 		 * not get reprocessed.
 		 */
-		private final static int RESPONSE_HOLD_TIME = 1500;
+		private final static int RESPONSE_HOLD_TIME = 18000;
 
 		private ConcurrentHashMap<String, DatagramPacket> map;
 		private LinkedBlockingQueue<Response> newResponse;
