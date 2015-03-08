@@ -275,20 +275,6 @@ public class DHT extends Thread {
 		return last;
 	}
 
-	private Successor getLastSuccessor() {
-		Successor s = null;
-		synchronized (successorLock) {
-			for (int i = successor.size() - 1; i >= 0; i--) {
-				Successor su = successor.get(i);
-				if (su.isAlive()) {
-					s = su;
-					break;
-				}
-			}
-		}
-		return s;
-	}
-
 	// send successor, regardless of deadness or aliveness for correctness of
 	// update need to be held to ensure correctness
 	private void sendAllSuccessor(PrintWriter out) {

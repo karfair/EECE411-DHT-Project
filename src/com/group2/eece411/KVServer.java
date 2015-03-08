@@ -275,9 +275,6 @@ public class KVServer implements RequestListener {
 				serverPort = server.getPort();
 			} else {
 				if (srcServer.equals(dht.getLocalHost())) {
-					// TODO for efficiency sake, right now the final server
-					// forward this msg to
-					// itself before giving it back to the client
 					routeMsgTo = false;
 					response = Response.SUCCESS;
 					value = new byte[request.length - 1];
