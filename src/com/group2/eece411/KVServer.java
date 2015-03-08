@@ -112,7 +112,7 @@ public class KVServer implements RequestListener {
 					srcServer = dht.getLocalHost();
 					serverPort = server.getPort();
 				}
-				DHT.Successor s = dht.getFirstSuccessor();
+				DHT.Successor s = closestSuccessorTo(request);
 				server.forwardRequest(uniqueRequestID, request, s.ip,
 						s.udpPort, srcAddr, srcPort, false, srcServer,
 						serverPort);
@@ -135,7 +135,7 @@ public class KVServer implements RequestListener {
 					srcServer = dht.getLocalHost();
 					serverPort = server.getPort();
 				}
-				DHT.Successor s = dht.getFirstSuccessor();
+				DHT.Successor s = closestSuccessorTo(request);
 				server.forwardRequest(uniqueRequestID, request, s.ip,
 						s.udpPort, srcAddr, srcPort, false, srcServer,
 						serverPort);
@@ -188,7 +188,7 @@ public class KVServer implements RequestListener {
 					srcServer = dht.getLocalHost();
 					serverPort = server.getPort();
 				}
-				DHT.Successor s = dht.getFirstSuccessor();
+				DHT.Successor s = closestSuccessorTo(request);
 				server.forwardRequest(uniqueRequestID, request, s.ip,
 						s.udpPort, srcAddr, srcPort, false, srcServer,
 						serverPort);
@@ -278,9 +278,11 @@ public class KVServer implements RequestListener {
 					// TODO for efficiency sake, right now the final server
 					// forward this msg to
 					// itself before giving it back to the client
+					routeMsgTo = false;
 					response = Response.SUCCESS;
 					value = new byte[request.length - 1];
 					System.arraycopy(request, 1, value, 0, request.length - 1);
+					System.out.println("returning nodes");
 					break;
 				}
 			}
@@ -349,6 +351,7 @@ public class KVServer implements RequestListener {
 	private DHT.Successor closestSuccessorTo(byte[] request) {
 		byte[] key = new byte[Code.KEY_LENGTH];
 		System.arraycopy(request, Code.CMD_LENGTH, key, 0, Code.KEY_LENGTH);
-		return dht.closestSuccessorTo(request);
+		return dht.closestSuccessorTo(key);
+		// return dht.getFirstSuccessor();
 	}
 }
