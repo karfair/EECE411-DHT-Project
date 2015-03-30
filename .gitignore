@@ -36,3 +36,9 @@ local.properties
 .texlipse
 
 /bin/
+
+#kit 
+/out/
+/.idea/
+MANIFEST.MF
+EECE411-A3.iml
