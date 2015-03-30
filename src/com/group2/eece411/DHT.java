@@ -2,7 +2,10 @@ package com.group2.eece411;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.PrintWriter;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -12,9 +15,12 @@ import java.net.UnknownHostException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicLong;
 
 // Circular DHT: Node x key range = (previous node + 1) to x
 public class DHT extends Thread {
@@ -22,7 +28,7 @@ public class DHT extends Thread {
 	private static final int DEFAULT_DHT_TCP_PORT = 7775;
 
 	private static boolean VERBOSE = false;
-	private static boolean LESS_VERBOSE = true;
+	private static boolean LESS_VERBOSE = false;
 	/**
 	 * InetAddress of the successor of this node
 	 */
@@ -61,6 +67,14 @@ public class DHT extends Thread {
 
 	// sort successor lock
 	private Semaphore sort = new Semaphore(1);
+	
+	//
+	private List<Darude> allNodes = new ArrayList<Darude>();
+	private Timer tokenChecker = new Timer();
+	private boolean leader = false;
+	private AtomicLong lastTokenReceived = new AtomicLong(System.currentTimeMillis());
+	
+	private static final boolean TOKEN_VERBOSE = true;
 
 	/**
 	 * Creates an Object which keeps track of the membership of the DHT
@@ -152,57 +166,71 @@ public class DHT extends Thread {
 			try {
 				Socket clientSocket = serverSocket.accept();
 
-				BufferedReader in = new BufferedReader(new InputStreamReader(
-						clientSocket.getInputStream()));
-				PrintWriter out = new PrintWriter(
-						clientSocket.getOutputStream(), true);
-
-				String input;
-				input = in.readLine();
-				if (VERBOSE) {
-					System.out.println(input + " @ "
-							+ thisNode.getHostAddress() + ":"
-							+ serverSocket.getLocalPort());
-					if (startKey != null && endKey != null) {
-						System.out.println("s" + startKey.toString());
-						System.out.println("e" + endKey.toString());
-					}
+				InputStream is = clientSocket.getInputStream();
+			
+				String input = "";
+				char c;
+				
+				while ((c = (char) is.read()) != '\n') {
+					input += c;
 				}
-				if (input.equals("join")) {
-					String node = in.readLine();
-					int port = Integer.parseInt(in.readLine());
-					int udpPort = Integer.parseInt(in.readLine());
+				input = input.replace("\r", "");
+				
+				// System.out.println(input);
+				
+				if (!input.contains("token")) {
+					InputStreamReader isr = new InputStreamReader(
+							clientSocket.getInputStream());
+					BufferedReader in = new BufferedReader(isr);
+					PrintWriter out = new PrintWriter(
+							clientSocket.getOutputStream(), true);
+					
 					if (VERBOSE) {
-						System.out.println("node: " + node + " port: " + port
-								+ " udpPort: " + udpPort);
-					}
-					processJoinRequest(node, port, udpPort);
-				} else if (input.equals("done")) {
-					String successor = in.readLine();
-					int port = Integer.parseInt(in.readLine());
-					int udpPort = Integer.parseInt(in.readLine());
-					String startKey = in.readLine();
-					done(successor, startKey, port, udpPort);
-				} else if (input.equals("fail")) {
-					BigInteger startKey = getStartKey(in.readLine());
-					synchronized (startKeyLock) {
-						if (startKey.compareTo(this.startKey) != 0) {
-							this.startKey = startKey;
+						System.out.println(input + " @ "
+								+ thisNode.getHostAddress() + ":"
+								+ serverSocket.getLocalPort());
+						if (startKey != null && endKey != null) {
+							System.out.println("s" + startKey.toString());
+							System.out.println("e" + endKey.toString());
 						}
 					}
-				} else if (input.equals("getSuccessor")) {
-					sendAllSuccessor(out);
-				} else if (input.equals("alive")) {
-					out.println("yes");
-				} else if (input.equals("update")) {
-					String newNode = in.readLine();
-					String oldNode = in.readLine();
-					int newPort = Integer.parseInt(in.readLine());
-					int udpPort = Integer.parseInt(in.readLine());
-					processUpdate(newNode, oldNode, newPort, udpPort);
+					if (input.equals("join")) {
+						String node = in.readLine();
+						int port = Integer.parseInt(in.readLine());
+						int udpPort = Integer.parseInt(in.readLine());
+						if (VERBOSE) {
+							System.out.println("node: " + node + " port: " + port
+									+ " udpPort: " + udpPort);
+						}
+						processJoinRequest(node, port, udpPort);
+					} else if (input.equals("done")) {
+						String successor = in.readLine();
+						int port = Integer.parseInt(in.readLine());
+						int udpPort = Integer.parseInt(in.readLine());
+						String startKey = in.readLine();
+						done(successor, startKey, port, udpPort);
+					} else if (input.equals("fail")) {
+						BigInteger startKey = getStartKey(in.readLine());
+						synchronized (startKeyLock) {
+							if (startKey.compareTo(this.startKey) != 0) {
+								this.startKey = startKey;
+							}
+						}
+					} else if (input.equals("getSuccessor")) {
+						sendAllSuccessor(out);
+					} else if (input.equals("alive")) {
+						out.println("yes");
+					} else if (input.equals("update")) {
+						String newNode = in.readLine();
+						String oldNode = in.readLine();
+						int newPort = Integer.parseInt(in.readLine());
+						int udpPort = Integer.parseInt(in.readLine());
+						processUpdate(newNode, oldNode, newPort, udpPort);
+					}
+					clientSocket.close();
+				} else {
+					new DarudeSandstorm(clientSocket).start();
 				}
-				clientSocket.close();
-
 			} catch (NullPointerException npe) {
 				// probably means it is communicating to has died
 				// or the dht is shutting down
@@ -218,6 +246,294 @@ public class DHT extends Thread {
 				e.printStackTrace();
 
 			}
+		}
+	}
+	
+	/**
+	 * Stores an InetAddress and its corresponding hashed value
+	 * @author Phil
+	 *
+	 */
+	public static class Darude implements Comparable<Object> {
+		public final InetAddress addr;
+		public final BigInteger endKey;
+		public final BigInteger startKey;
+		
+		private final boolean endKeyGreaterThanStart;
+
+		public Darude(InetAddress addr, BigInteger endKey, BigInteger startKey) {
+			this.addr = addr;
+			this.endKey = endKey;
+			this.startKey = startKey;
+			
+			if (endKey.compareTo(startKey) > 0) {
+				endKeyGreaterThanStart = true;
+			} else {
+				endKeyGreaterThanStart = false;
+			}
+		}
+		
+		@Override
+		public int compareTo(Object o) {
+			BigInteger key;
+			if (o instanceof Darude) {
+				key = ((Darude) o).endKey;
+			} else {
+				key = (BigInteger) o;
+			} 	
+			
+			if (endKeyGreaterThanStart) {
+				if (key.compareTo(startKey) >= 0) {
+					if (key.compareTo(endKey) <= 0) {
+						return 0;
+					} else {
+						return -1;
+					}
+				} else {
+					return 1;
+				}
+			} else {
+				if (key.compareTo(startKey) >= 0 || key.compareTo(startKey) <= 0) {
+					return 0;
+				} else {
+					return -1;
+				}
+			}
+		}
+		
+		@Override
+		public boolean equals(Object o) {
+			if (o instanceof Darude) {
+				Darude d = (Darude) o;
+				return endKey.equals(d.endKey);
+			} else if (o instanceof BigInteger) {
+				BigInteger key = (BigInteger) o;
+				if (endKeyGreaterThanStart) {
+					if (key.compareTo(startKey) >= 0
+							&& key.compareTo(endKey) <= 0) {
+						return true;
+					}
+					return false;
+				} else {
+					if (key.compareTo(startKey) >= 0
+							|| key.compareTo(endKey) <= 0) {
+						return true;
+					}
+					return false;
+				}
+			} else {
+				return false;
+			}
+		}
+	}
+	
+	public class DarudeSandstorm extends Thread {
+		Socket clientSocket;
+		ObjectInputStream ois;
+		List<InetAddress> list;
+		
+		public DarudeSandstorm(Socket clientSocket) throws IOException {
+			super("DarudeSandstorm");
+			this.clientSocket = clientSocket;
+			ois = new ObjectInputStream(clientSocket.getInputStream());
+		}
+		
+		@SuppressWarnings("unchecked")
+		@Override
+		public void run() {
+			// gets the list of all participating nodes
+			try {
+				list = (List<InetAddress>) ois.readObject();
+				clientSocket.close();
+			} catch (ClassNotFoundException | IOException e) {
+				System.err.println("DHT server failed! -> error reading token");
+				e.printStackTrace();
+				return;
+			}
+			
+			lastTokenReceived.set(System.currentTimeMillis());
+			darude();
+			forward(list);
+		}
+		
+		/**
+		 * Weed out IMMEDIATE dead successor.
+		 */
+		private void darude() {
+			// get index of this node
+			Successor first = getFirstSuccessor();
+			
+			int i, thisIndex = -1, successorIndex = -1;
+			for (i = 0; i < list.size(); i++) {
+				if (list.get(i).equals(thisNode)) {
+					thisIndex = i;
+				}
+				if (list.get(i).equals(first.ip)) {
+					successorIndex = i;
+				}
+			}
+			
+			int thisIndexCircularPlusOne = list.size() == 0 ? -2 : (thisIndex + 1) % list.size();
+			if (thisIndex == -1) {
+				// means the list is not yet completed, add yourself to it
+				list.add(thisNode);
+				return;
+			} else if (successorIndex == -1) {
+				// successor not found, means this successor is new so
+				// add the successor to the list
+				if (positiveBigIntegerHash(first.ip.getAddress()).compareTo(endKey) < 0) {
+					// successor is the lowest numbered one
+					list.add(0, first.ip);
+				} else {
+					// successor is right after this one
+					list.add(thisIndex + 1, first.ip);
+				}
+			} else if (thisIndexCircularPlusOne == successorIndex) {
+				// do nothing as its successor is unchanged
+			} else {
+				// there are some immediate dead successor, remove them
+				
+				// normal remove, successor index is after this index
+				if (thisIndexCircularPlusOne < successorIndex) {
+					int removeAmount = successorIndex - thisIndexCircularPlusOne;
+					System.out.println(thisNode.getHostAddress() + "\nremoving amoutn:" + removeAmount );
+					System.out.println("size before: " + list.size());
+					for (int k = 0; k < removeAmount; k++) {
+						list.remove(thisIndexCircularPlusOne);
+					}
+					System.out.println("size after: " + list.size());
+				// abnormal remove, successor index is before this one
+				} else {
+					try {
+						while (true) {
+							list.remove(thisIndexCircularPlusOne);
+						}
+					} catch (IndexOutOfBoundsException e) {
+						// done
+					}
+					
+					while(!list.get(0).equals(first.ip)) {
+						list.remove(0);
+					}
+				}
+			}
+			
+			sandstorm();
+		}
+		
+		/**
+		 * Changes this node's allNode list from the new received token
+		 */
+		private void sandstorm() {
+			InetAddress lastNode = list.get(list.size() - 1);
+			byte[] lastNodeAddress = lastNode.getAddress();
+			BigInteger previousEndKeyPlusOne = circularPlusOne(positiveBigIntegerHash(lastNodeAddress));
+			BigInteger currentEndKey;
+			List<Darude> l = new ArrayList<Darude>();
+			for (InetAddress addr : list) {
+				currentEndKey = positiveBigIntegerHash(addr.getAddress());
+				Darude d = new Darude(addr, currentEndKey, previousEndKeyPlusOne);
+				previousEndKeyPlusOne = circularPlusOne(currentEndKey);
+				
+				l.add(d);
+			}
+			
+			// Collections.sort(l);
+			allNodes = l;
+		}
+	}
+	
+	private void checkToken() {
+		BigInteger successor = positiveBigIntegerHash(getFirstSuccessor().ip.getAddress());
+		if (successor.compareTo(endKey) < 0) {
+			leader = true;
+		} else {
+			leader = false;
+		}
+		
+		if (leader) {
+			if (System.currentTimeMillis() - lastTokenReceived.get() > 10000) {
+				forward(new ArrayList<InetAddress>());
+			}
+		}
+		
+		if (TOKEN_VERBOSE && leader) {
+			List<Darude> allNodes = this.allNodes;
+			
+			String ip = "";
+			String hash = "";
+			for (Darude d : allNodes) {
+				String key = d.startKey.toString();
+				String partialKey = key.substring(0, 5) + "..." + key.charAt(key.length() - 1) + " " + key.length();
+				
+				key = d.endKey.toString();
+				partialKey += " | " + key.substring(0, 5) + "..." + key.charAt(key.length() - 1) + " " + key.length();
+				
+				ip += d.addr.getHostAddress() + "\n";
+				hash += partialKey + "\n";
+			}
+			System.out.println(ip);
+			System.out.println(hash);
+		}
+	}
+	
+	private void forward(List<InetAddress> list) {
+		Socket clientSocket;
+		ArrayList<Successor> copy = getCopy();
+
+		int i;
+		for (i = 0; i < copy.size(); i++) {
+			Successor s = copy.get(i);
+			if (!s.isAlive()) {
+				if (VERBOSE) {
+					System.out.println("successor " + i + " is dead.");
+				}
+				continue;
+			}
+
+			if (VERBOSE) {
+				System.out.println("sending to ip:" + s.ip.getHostAddress()
+						+ "@" + s.tcpPort);
+			}
+
+			try {
+				clientSocket = new Socket(s.ip, s.tcpPort);
+
+				PrintWriter out = new PrintWriter(
+						clientSocket.getOutputStream(), true);
+				if (VERBOSE) {
+					System.out.println("sending: token");
+				}
+				out.print("token\n");
+				out.flush();
+
+				ObjectOutputStream oos = new ObjectOutputStream(clientSocket.getOutputStream());
+				oos.flush();
+				oos.writeObject(list);
+				oos.flush();
+				oos.close();
+
+				// success and we are done
+				clientSocket.close();
+				break;
+			} catch (IOException e) {
+				// if any of the read or write operations fails, control will
+				// continue here, we will log the server that had failed
+				// and try the next server
+				s.setDead();
+				if (VERBOSE) {
+					System.out.println("node " + i + " just died. msg:"
+							+ e.getMessage());
+					e.printStackTrace();
+				}
+			}
+		}
+
+		if (i == copy.size()) {
+			System.err
+					.println("DHT.forward(): All successors are dead. Server shutting down...");
+			System.err.println("sucessor.size(): " + copy.size() + " i: " + i);
+			System.exit(1);
 		}
 	}
 
@@ -250,6 +566,17 @@ public class DHT extends Thread {
 	}
 
 	public Successor closestSuccessorTo(byte[] key) {
+		List<Darude> allNodes = this.allNodes;
+		int location = Collections.binarySearch(allNodes, positiveBigIntegerHash(key));
+		
+		// if not found, that means it is the highest number in the list, so 
+		// the highest # is stored on the 1st node
+		location = location < 0 ? 0 : location;
+		
+		Darude d = allNodes.get(location);
+		return new Successor(d.addr, DEFAULT_DHT_TCP_PORT, 6772);
+		
+		/*
 		ArrayList<Successor> a = getCopy();
 		BigInteger wrapKey = positiveBigIntegerHash(key);
 		BigInteger startKey = circularPlusOne(endKey);
@@ -272,7 +599,7 @@ public class DHT extends Thread {
 				}
 			}
 		}
-		return last;
+		return last;*/
 	}
 
 	// send successor, regardless of deadness or aliveness for correctness of
@@ -479,6 +806,13 @@ public class DHT extends Thread {
 				checkSuccessor();
 			}
 		}, 5000, 5000);
+		
+		tokenChecker.scheduleAtFixedRate(new TimerTask() {
+			@Override
+			public void run() {
+				checkToken();
+			}
+		}, 10000, 10000);
 	}
 
 	private static BigInteger getStartKey(String predecessor) {

@@ -12,9 +12,9 @@ import com.group2.eece411.KVClient;
 
 public class StartClient {
 
-	public static int multiplier = 1;
-	public static int timeout = 2000;
-	public static int tries = 5;
+	public static int multiplier = 2;
+	public static int timeout = 200;
+	public static int tries = 3;
 	public static int maxValueLength = 1000;
 
 	public static Object minMaxLock = new Object();
@@ -35,7 +35,7 @@ public class StartClient {
 
 		int numClient = 5;
 		int amount = 10;
-		String host = "planetlab1.cs.ubc.ca";
+		// String host = "128.208.4.199";
 		// String host = "planetlab1.dojima.wide.ad.jp";
 		// String host = "roam1.cs.ou.edu";
 		// String host = "ricepl-2.cs.rice.edu";
@@ -44,6 +44,10 @@ public class StartClient {
 		// String host = "pl1.cs.montana.edu";
 		// String host = "pl2.cs.montana.edu";
 		// String host = "localhost";
+		// String host = "128.42.142.45";
+		// String host = "plonk.cs.uwaterloo.ca";
+		// String host = "planetlab1.cs.ubc.ca";
+		String host = "204.8.155.227";
 
 		if (args.length != 0) {
 			numClient = Integer.parseInt(args[0]);

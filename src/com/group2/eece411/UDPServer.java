@@ -43,6 +43,9 @@ public class UDPServer extends Thread {
 	// system overload threads
 	private Executor overloadThreads = Executors.newFixedThreadPool(2);
 
+	// fake udp
+	public FakeUDP fakeudp;
+
 	public UDPServer(RequestListener requestListener) {
 		super("UDPServer");
 
@@ -69,6 +72,10 @@ public class UDPServer extends Thread {
 					.println("Error: Socket cannot be created - all specified port are already in use.");
 			System.exit(1);
 		}
+
+		// create a channel
+		fakeudp = new FakeUDP(this);
+		fakeudp.start();
 	}
 
 	// stops the server
@@ -123,22 +130,9 @@ public class UDPServer extends Thread {
 				continue;
 			}
 
-			if (numThreads.tryAcquire()) {
-				// if resources permits, handle the request
-				try {
-					requestThreads.execute(new PacketHandler(packet, false));
-				} catch (RejectedExecutionException e) {
-					// means the server is shutting down
-					continue;
-				}
-			} else {
-				// otherwise return overload
-				try {
-					overloadThreads.execute(new PacketHandler(packet, true));
-				} catch (RejectedExecutionException e) {
-					// means the server is shutting down
-					continue;
-				}
+			if (!processDatagram(packet)) {
+				// means the server is shutting down
+				continue;
 			}
 		}
 		// stop and join w/ the collection thread
@@ -202,6 +196,7 @@ public class UDPServer extends Thread {
 				}
 				numThreads.release();
 			} else {
+				// TODO server should/could do something on overload
 				// byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
 				// + Code.CMD_LENGTH];
 				// copy over unique id
@@ -381,7 +376,9 @@ public class UDPServer extends Thread {
 			int srcPort, boolean finalForward, InetAddress srcServer, int sPort) {
 		byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH
 				+ 16 + request.length];
-
+		
+		System.out.println("fwd");
+		
 		// copy over unique id
 		System.arraycopy(uniqueRequestID, 0, sendBuf, 0,
 				Config.REQUEST_ID_LENGTH);
@@ -436,11 +433,32 @@ public class UDPServer extends Thread {
 
 		// send/resend the response
 		try {
-			socket.send(response);
+			FakeUDP.send(response);
 		} catch (IOException e) {
 			// failed to send
 			// e.printStackTrace();
 			return false;
+		}
+		return true;
+	}
+
+	public boolean processDatagram(DatagramPacket packet) {
+		if (numThreads.tryAcquire()) {
+			// if resources permits, handle the request
+			try {
+				requestThreads.execute(new PacketHandler(packet, false));
+			} catch (RejectedExecutionException e) {
+				// means the server is shutting down
+				return false;
+			}
+		} else {
+			// otherwise return overload
+			try {
+				overloadThreads.execute(new PacketHandler(packet, true));
+			} catch (RejectedExecutionException e) {
+				// means the server is shutting down
+				return false;
+			}
 		}
 		return true;
 	}
