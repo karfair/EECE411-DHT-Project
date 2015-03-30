@@ -1,12 +1,12 @@
 package com.group2.eece411;
 
+import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import javax.xml.bind.DatatypeConverter;
 
 import com.group2.eece411.Config.Code;
 import com.group2.eece411.Config.Code.Command;
@@ -27,14 +27,14 @@ public class KVServer implements RequestListener {
 		table = new KVStore();
 
 		server = new UDPServer(this);
-		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort());
+		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort(),table);
 	}
 
 	public KVServer(boolean initialNode, String initialNodeName, int port) {
 		table = new KVStore();
 
 		server = new UDPServer(this);
-		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort());
+		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort(),table);
 	}
 
 	public void start() {
@@ -148,7 +148,7 @@ public class KVServer implements RequestListener {
 			System.out.println("put in range.");
 
 			// checks if the value length matches the actual value length
-			byte[] valueLength = new byte[Integer.BYTES];
+			byte[] valueLength = new byte[4];
 			if (request.length < Code.CMD_LENGTH + Code.KEY_LENGTH
 					+ Code.VALUE_LENGTH_LENGTH) {
 				response = Response.INVALID_VALUE;
@@ -175,10 +175,55 @@ public class KVServer implements RequestListener {
 				System.arraycopy(request, Code.CMD_LENGTH + Code.KEY_LENGTH, v,
 						0, v.length);
 				table.put(parseKey(request), v);
+
+                request[0] = Command.FORCE_PUT;
+
+                if (!routeMsgTo) {
+					srcServer = dht.getLocalHost();
+					serverPort = server.getPort();
+				}
+                ArrayList<DHT.Successor> firstTwo = dht.firstTwoSuccessor();
+                for(DHT.Successor s: firstTwo){
+                    server.forwardRequest(uniqueRequestID, request, s.ip,
+                            s.udpPort, srcAddr, srcPort, false, srcServer,
+                            serverPort);
+                }
+
 				response = Response.SUCCESS;
 			}
 
 			break;
+        case Command.FORCE_PUT:
+            byte[] valueLength0 = new byte[4];
+            if (request.length < Code.CMD_LENGTH + Code.KEY_LENGTH
+                    + Code.VALUE_LENGTH_LENGTH) {
+                response = Response.INVALID_VALUE;
+                break;
+            }
+            // copy the val_len_len out
+            System.arraycopy(request, Code.CMD_LENGTH + Code.KEY_LENGTH,
+                    valueLength0, 0, Code.VALUE_LENGTH_LENGTH);
+            // length of value as specified by val_length
+            int intValueLength0 = ByteBuffer.wrap(valueLength0)
+                    .order(ByteOrder.LITTLE_ENDIAN).getInt();
+
+            // actual length of value
+            int actualValueLength0 = request.length - Code.CMD_LENGTH
+                    - Code.VALUE_LENGTH_LENGTH - Code.KEY_LENGTH;
+
+            if (intValueLength0 > actualValueLength0
+                    || intValueLength0 <= 0
+                    || intValueLength0 > Config.MAX_APPLICATION_PAYLOAD
+                    - Code.CMD_LENGTH - Code.VALUE_LENGTH_LENGTH) {
+                response = Response.INVALID_VALUE;
+            } else {
+                byte[] v = new byte[intValueLength0 + Code.VALUE_LENGTH_LENGTH];
+                System.arraycopy(request, Code.CMD_LENGTH + Code.KEY_LENGTH, v,
+                        0, v.length);
+                table.put(parseKey(request), v);
+            }
+            System.out.println(dht.getLocalHost().getHostName() + " Calling Force_Put");
+            return;
 		case Command.REMOVE:
 			if (!isValidKey(request)) {
 				response = Response.INVALID_KEY;
@@ -196,10 +241,32 @@ public class KVServer implements RequestListener {
 			}
 			if (table.remove(parseKey(request)) != null) {
 				response = Response.SUCCESS;
+
+                request[0] = Command.FORCE_REMOVE;
+                ArrayList<DHT.Successor> firstTwo = dht.firstTwoSuccessor();
+                if (!routeMsgTo) {
+					srcServer = dht.getLocalHost();
+					serverPort = server.getPort();
+				}
+                for(DHT.Successor s: firstTwo){
+                    server.forwardRequest(uniqueRequestID, request, s.ip,
+                            s.udpPort, srcAddr, srcPort, false, srcServer,
+                            serverPort);
+                }
+
 			} else {
 				response = Response.INVALID_KEY;
 			}
-			break;
+            break;
+        case Command.FORCE_REMOVE:
+            if (table.remove(parseKey(request)) != null) {
+                response = Response.SUCCESS;
+            } else {
+                response = Response.INVALID_KEY;
+            }
+            System.out.println(dht.getLocalHost().getHostName() + " Calling Force_Remove");
+            return;
+
 		case Command.SHUTDOWN:
 			// insta kill
 			System.exit(0);
@@ -294,7 +361,7 @@ public class KVServer implements RequestListener {
 			System.arraycopy(serverAddress, 0, newRequest, request.length, 4);
 
 			// copy over this server Port
-			byte[] udpPort = ByteBuffer.allocate(Integer.BYTES)
+			byte[] udpPort = ByteBuffer.allocate(4)
 					.putInt(thisPort).array();
 			System.arraycopy(udpPort, 0, newRequest, request.length + 4, 4);
 
@@ -333,10 +400,10 @@ public class KVServer implements RequestListener {
 	}
 
 	// get the key from the message (in hex String format)
-	private static String parseKey(byte[] request) {
+	private BigInteger parseKey(byte[] request) {
 		byte[] key = new byte[Code.KEY_LENGTH];
 		System.arraycopy(request, Code.CMD_LENGTH, key, 0, Code.KEY_LENGTH);
-		return DatatypeConverter.printHexBinary(key);
+		return DHT.positiveBigIntegerHash(key);
 	}
 
 	private boolean isKeyInRange(byte[] request) {

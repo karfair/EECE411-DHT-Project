@@ -17,6 +17,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.Semaphore;
@@ -64,6 +66,8 @@ public class DHT extends Thread {
 	private boolean initialNode;
 	private String initialNodeName;
 	private int initialNodePort;
+	
+	private KVStore table;
 
 	// sort successor lock
 	private Semaphore sort = new Semaphore(1);
@@ -90,7 +94,7 @@ public class DHT extends Thread {
 	 *            - client port
 	 */
 	public DHT(boolean initialNode, String initialNodeName, int port,
-			int UDPPort) {
+			int UDPPort, KVStore table) {
 
 		try {
 			this.thisNode = InetAddress.getLocalHost();
@@ -110,6 +114,8 @@ public class DHT extends Thread {
 		this.initialNodeName = initialNodeName;
 		this.initialNodePort = port;
 		this.thisUDPPort = UDPPort;
+		
+		this.table = table;
 
 		try {
 			if (initialNode) {
@@ -602,6 +608,19 @@ public class DHT extends Thread {
 		return last;*/
 	}
 
+    public ArrayList<Successor> firstTwoSuccessor(){
+        ArrayList<Successor> copy = getCopy();
+        ArrayList<Successor> ret = new ArrayList<>();
+        int count = 0;
+        for(Successor s : copy){
+            if(count >= 2) break;
+            if(s.isAlive()){
+                ret.add(s);
+            }
+        }
+        return ret;
+    }
+
 	// send successor, regardless of deadness or aliveness for correctness of
 	// update need to be held to ensure correctness
 	private void sendAllSuccessor(PrintWriter out) {
@@ -665,6 +684,7 @@ public class DHT extends Thread {
 				out.println(serverSocket.getLocalPort());
 				out.println(thisUDPPort);
 				out.println(stringStartKey);
+				sendKeys(clientSocket);
 
 				clientSocket.close();
 			} catch (IOException e) {
@@ -1233,5 +1253,32 @@ public class DHT extends Thread {
 				s.setDead();
 			}
 		}
+	}
+
+	private void sendKeys(Socket clientSocket) {
+		LinkedHashMap<BigInteger, byte[]> ayylmao = new LinkedHashMap<BigInteger, byte[]>();
+		Iterator<BigInteger> it = table.getMap().keySet().iterator();
+		BigInteger startKey;
+		synchronized (startKeyLock) {
+			startKey=this.startKey;
+		}
+		
+		if(it.hasNext()){
+			BigInteger key = it.next();
+			if (endKey.compareTo(startKey) > 0) {
+				//if it.next() is not in the range, copy <key,value> into ayylmao.
+				if (!(key.compareTo(startKey) >= 0
+						&& key.compareTo(endKey) <= 0)) {
+					ayylmao.put(key, table.get(key));
+				}
+			} else {
+				if (!(key.compareTo(startKey) >= 0
+						|| key.compareTo(endKey) <= 0)) {
+					ayylmao.put(key, table.get(key));
+				}
+			}
+			
+		}
+		
 	}
 }
