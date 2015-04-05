@@ -4,6 +4,7 @@ import org.junit.Before;
 
 import com.group2.eece411.KVServer;
 
+@SuppressWarnings("unused")
 public class KVServerTest {
 
 	private KVServer server;

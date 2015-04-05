@@ -1,9 +1,10 @@
 package com.group2.eece411.A3;
 
 import com.group2.eece411.KVServer;
-/*
-public class StartServer {
 
+@SuppressWarnings("unused")
+public class StartServer {}
+/*
 	public static void main(String[] args) {
 
 		int capacity;

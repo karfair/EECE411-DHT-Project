@@ -14,7 +14,7 @@ import com.group2.eece411.A3.ClientThread.ClientType;
 public class StartClient {
 
 	public static int multiplier = 2;
-	public static int timeout = 200;
+	public static int timeout = 1000;
 	public static int tries = 3;
 	public static int maxValueLength = 1000;
 
@@ -34,10 +34,10 @@ public class StartClient {
 	 */
 	public static void main(String[] args) {
 		
-		ClientType clientType = ClientType.REMOVE;
+		ClientType clientType = ClientType.ALL;
 
-		int numClient = 5;
-		int amount = 10;
+		int numClient = 2;
+		int amount = 20;
 		// String host = "128.208.4.199";
 		// String host = "planetlab1.dojima.wide.ad.jp";
 		// String host = "roam1.cs.ou.edu";
