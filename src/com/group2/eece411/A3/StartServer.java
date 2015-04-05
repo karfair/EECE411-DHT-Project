@@ -1,7 +1,7 @@
 package com.group2.eece411.A3;
 
 import com.group2.eece411.KVServer;
-
+/*
 public class StartServer {
 
 	public static void main(String[] args) {
@@ -35,4 +35,4 @@ public class StartServer {
 		}
 		System.out.println("Server shutting down...");
 	}
-}
+}*/

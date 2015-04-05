@@ -28,14 +28,14 @@ public class KVServer implements RequestListener {
 		table = new KVStore();
 
 		server = new UDPServer(this);
-		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort(),table);
+		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort());
 	}
 
 	public KVServer(boolean initialNode, String initialNodeName, int port) {
 		table = new KVStore();
 
 		server = new UDPServer(this);
-		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort(),table);
+		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort());
 	}
 
 	public void start() {

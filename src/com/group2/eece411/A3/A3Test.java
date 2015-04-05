@@ -13,6 +13,7 @@ import com.group2.eece411.KVServer;
  * @author Phil
  *
  */
+/*
 public class A3Test {
 	public static void main(String[] args) {
 		byte[] defaultKey = new byte[] { 99, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -110,4 +111,4 @@ public class A3Test {
 		// shut down the server
 		server.stopMe();
 	}
-}
+}*/

@@ -7,11 +7,11 @@ import com.group2.eece411.KVServer;
 public class KVServerTest {
 
 	private KVServer server;
-
+/*
 	@Before
 	public void setUp() {
 		server = new KVServer();
-	}
+	}*/
 
 	// @Test
 	// public void putAndGet() {
