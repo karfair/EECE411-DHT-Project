@@ -19,6 +19,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.Semaphore;
@@ -184,7 +185,11 @@ public class DHT extends Thread {
 				
 				// System.out.println(input);
 				
-				if (!input.contains("token")) {
+				if (input.contains("token")) {
+					new DarudeSandstorm(clientSocket).start();
+				} else if (input.contains("pushKeys")) {
+					new pullKeys(clientSocket).start();
+				} else {
 					InputStreamReader isr = new InputStreamReader(
 							clientSocket.getInputStream());
 					BufferedReader in = new BufferedReader(isr);
@@ -234,8 +239,6 @@ public class DHT extends Thread {
 						processUpdate(newNode, oldNode, newPort, udpPort);
 					}
 					clientSocket.close();
-				} else {
-					new DarudeSandstorm(clientSocket).start();
 				}
 			} catch (NullPointerException npe) {
 				// probably means it is communicating to has died
@@ -359,7 +362,7 @@ public class DHT extends Thread {
 			
 			lastTokenReceived.set(System.currentTimeMillis());
 			darude();
-			forward(list);
+			forward(list, "token");
 		}
 		
 		/**
@@ -459,7 +462,7 @@ public class DHT extends Thread {
 		
 		if (leader) {
 			if (System.currentTimeMillis() - lastTokenReceived.get() > 10000) {
-				forward(new ArrayList<InetAddress>());
+				forward(new ArrayList<InetAddress>(), "token");
 			}
 		}
 		
@@ -483,8 +486,7 @@ public class DHT extends Thread {
 		}
 	}
 	
-	private void forward(List<InetAddress> list) {
-		Socket clientSocket;
+	private void forward(Object darude, String header) {
 		ArrayList<Successor> copy = getCopy();
 
 		int i;
@@ -503,24 +505,7 @@ public class DHT extends Thread {
 			}
 
 			try {
-				clientSocket = new Socket(s.ip, s.tcpPort);
-
-				PrintWriter out = new PrintWriter(
-						clientSocket.getOutputStream(), true);
-				if (VERBOSE) {
-					System.out.println("sending: token");
-				}
-				out.print("token\n");
-				out.flush();
-
-				ObjectOutputStream oos = new ObjectOutputStream(clientSocket.getOutputStream());
-				oos.flush();
-				oos.writeObject(list);
-				oos.flush();
-				oos.close();
-
-				// success and we are done
-				clientSocket.close();
+				forward(s.ip, s.tcpPort, header, darude);
 				break;
 			} catch (IOException e) {
 				// if any of the read or write operations fails, control will
@@ -541,6 +526,27 @@ public class DHT extends Thread {
 			System.err.println("sucessor.size(): " + copy.size() + " i: " + i);
 			System.exit(1);
 		}
+	}
+	
+	private void forward(InetAddress address, int port, String header, Object darude) throws IOException {
+		Socket clientSocket = new Socket(address, port);
+
+		PrintWriter out = new PrintWriter(
+				clientSocket.getOutputStream(), true);
+		if (VERBOSE) {
+			System.out.println("sending: entrySets");
+		}
+		out.print(header + "\n");
+		out.flush();
+
+		ObjectOutputStream oos = new ObjectOutputStream(clientSocket.getOutputStream());
+		oos.flush();
+		oos.writeObject(darude);
+		oos.flush();
+		oos.close();
+		
+		// success and we are done
+		clientSocket.close();
 	}
 
 	/**
@@ -684,7 +690,6 @@ public class DHT extends Thread {
 				out.println(serverSocket.getLocalPort());
 				out.println(thisUDPPort);
 				out.println(stringStartKey);
-				sendKeys(clientSocket);
 
 				clientSocket.close();
 			} catch (IOException e) {
@@ -700,6 +705,7 @@ public class DHT extends Thread {
 				successor.add(new Successor(inetNode, port, udpPort));
 				startCheckSuccessor();
 			} else {
+				new SendKeys(inetNode, port).start();
 				update(inetNode.getHostAddress(), thisNode.getHostAddress(),
 						port, udpPort);
 			}
@@ -1255,30 +1261,92 @@ public class DHT extends Thread {
 		}
 	}
 
-	private void sendKeys(Socket clientSocket) {
-		LinkedHashMap<BigInteger, byte[]> ayylmao = new LinkedHashMap<BigInteger, byte[]>();
-		Iterator<BigInteger> it = table.getMap().keySet().iterator();
-		BigInteger startKey;
-		synchronized (startKeyLock) {
-			startKey=this.startKey;
+	/* 
+	 * Starts a thread that iterates over this node's hashmap to copy entries that do not lie in its range.
+	 * The thread copies the entries into a LinkedHashMap and passes the LHM to the forward function which sends the data to the predecessor.
+	 */
+	public class SendKeys extends Thread {
+		InetAddress address;
+		int port;
+		public SendKeys(InetAddress address, int port) {
+			super("SendKeys");
+			this.address = address;
+			this.port = port;
 		}
 		
-		if(it.hasNext()){
-			BigInteger key = it.next();
-			if (endKey.compareTo(startKey) > 0) {
-				//if it.next() is not in the range, copy <key,value> into ayylmao.
-				if (!(key.compareTo(startKey) >= 0
-						&& key.compareTo(endKey) <= 0)) {
-					ayylmao.put(key, table.get(key));
-				}
-			} else {
-				if (!(key.compareTo(startKey) >= 0
-						|| key.compareTo(endKey) <= 0)) {
-					ayylmao.put(key, table.get(key));
-				}
+		@Override
+		public void run() {
+			LinkedHashMap<BigInteger, byte[]> ayylmao = new LinkedHashMap<BigInteger, byte[]>();
+			Iterator<BigInteger> it = table.getMap().keySet().iterator();
+			BigInteger start;
+			synchronized (startKeyLock) {
+				start = startKey;
 			}
 			
+			if(it.hasNext()){
+				BigInteger key = it.next();
+				if (endKey.compareTo(start) > 0) {
+					//if it.next() is not in the range, copy <key,value> into ayylmao.
+					if (!(key.compareTo(start) >= 0
+							&& key.compareTo(endKey) <= 0)) {
+						ayylmao.put(key, table.get(key));
+					}
+				} else {
+					if (!(key.compareTo(start) >= 0
+							|| key.compareTo(endKey) <= 0)) {
+						ayylmao.put(key, table.get(key));
+					}
+				}
+			}
+			//send map over to predecessor
+			try{
+			forward(address, port, "pushKeys", ayylmao);
+			}catch(IOException i){
+				System.err.println("IOException at forward('pusKeys')");
+			}
+		}
+	}
+	
+	/*
+	 * A thread which takes a Socket and opens an objectInputStream using the socket.
+	 * An object is read in from the objectInputStream and is iterated over and the entries are added to this node's hashmap.
+	 */
+	public class pullKeys extends Thread{
+		Socket clientSocket;
+		ObjectInputStream ois;
+		LinkedHashMap<BigInteger, byte[]> lhm;
+		public pullKeys(Socket clientSocket){
+			super("pullKeys");
+			this.clientSocket = clientSocket;
+			try{
+			ois = new ObjectInputStream(clientSocket.getInputStream());
+			}catch(IOException io){
+				System.err.println("IOException when declaring objectInputStream at pullKeys");
+				io.printStackTrace();
+			}
+		}
+		@SuppressWarnings("unchecked")
+		@Override
+		public void run(){
+			try {
+				lhm =(LinkedHashMap<BigInteger, byte[]>) ois.readObject();
+				clientSocket.close();
+				BigInteger key;
+				byte[] value;
+				for(Map.Entry<BigInteger, byte[]>entry : lhm.entrySet()){
+					key = entry.getKey();
+					value = entry.getValue();
+					table.put(key, value);
+				}
+			} catch (ClassNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 		}
 		
 	}
+	
 }

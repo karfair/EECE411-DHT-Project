@@ -6,6 +6,7 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.group2.eece411.Config.Code;
@@ -122,11 +123,132 @@ public class KVServer implements RequestListener {
 			value = table.get(parseKey(request));
 			if (value != null) {
 				response = Response.SUCCESS;
+                break;
 			} else {
-				response = Response.INVALID_KEY;
+                /*
+                If the key is not in this node,pass the get command to its first two successors.
+                Message passed contains: Command(1byte) + IpAdress of this node + IpAdress of first Successor + 2nd Successor + key
+                 */
+                ArrayList<DHT.Successor> firstTWo = dht.firstTwoSuccessor();
+                byte[] newReq = new byte[Code.CMD_LENGTH + 3*Config.IP_ADDRESS_LENGTH + Code.KEY_LENGTH];
+                newReq[0] = Command.FORCE_GET;
+                System.arraycopy(dht.getLocalHost().getAddress(),0,newReq,Code.CMD_LENGTH,Config.IP_ADDRESS_LENGTH);
+                int count = 0;
+                for(DHT.Successor s : firstTWo){
+                    System.arraycopy(s.ip.getAddress(),0,newReq,(count + 1)*Config.IP_ADDRESS_LENGTH + Code.CMD_LENGTH,Config.IP_ADDRESS_LENGTH);
+                    count ++;
+                }
+
+                byte[] key = new byte[Code.KEY_LENGTH];
+                System.arraycopy(request, Code.CMD_LENGTH, key, 0, Code.KEY_LENGTH);
+                System.arraycopy(key,0,newReq,Code.CMD_LENGTH + 3*(Config.IP_ADDRESS_LENGTH),Code.KEY_LENGTH);
+
+                server.forwardRequest(uniqueRequestID, newReq, firstTWo.get(0).ip, Config.validPort[0], srcAddr, srcPort, false, srcServer, serverPort);
+
+                return;
 			}
-			break;
-		case Command.PUT:
+        case Command.FORCE_GET:
+            byte[] firstNode = new byte[dht.getLocalHost().getAddress().length];
+            byte[] secondNode = new byte[dht.getLocalHost().getAddress().length];
+            byte[] thirdNode = new byte[dht.getLocalHost().getAddress().length];
+            byte[] key = new byte[Code.KEY_LENGTH];
+
+            System.arraycopy(request,Code.CMD_LENGTH,firstNode,0,Config.IP_ADDRESS_LENGTH);
+
+            System.arraycopy(request,Code.CMD_LENGTH+Config.IP_ADDRESS_LENGTH,secondNode,0,Config.IP_ADDRESS_LENGTH);
+
+            System.arraycopy(request,Code.CMD_LENGTH+2*Config.IP_ADDRESS_LENGTH,thirdNode,0,Config.IP_ADDRESS_LENGTH);
+
+            System.arraycopy(request,Code.CMD_LENGTH+3*Config.IP_ADDRESS_LENGTH,key,0,Code.KEY_LENGTH);
+
+            if(Arrays.equals(dht.getLocalHost().getAddress(),secondNode)) {
+
+                value = table.get(parseKey(request));
+
+                if (value != null) {
+                    response = Response.SUCCESS;
+                    byte[] newReq = new byte[Code.CMD_LENGTH + Code.KEY_LENGTH
+                            + Code.VALUE_LENGTH_LENGTH + value.length];
+                    newReq[0] = Command.FORCE_PUT;
+
+                    System.arraycopy(key, 0, request, Code.CMD_LENGTH, Code.KEY_LENGTH);
+
+                    System.arraycopy(key,0,newReq,Code.CMD_LENGTH,Code.KEY_LENGTH);
+                    byte[] valLength = ByteBuffer.allocate(4)
+                            .order(ByteOrder.LITTLE_ENDIAN).putInt(value.length).array();
+                    System.arraycopy(valLength, 0, request, Code.CMD_LENGTH
+                            + Code.KEY_LENGTH, Code.VALUE_LENGTH_LENGTH);
+
+                    System.arraycopy(value, 0, request, Code.CMD_LENGTH + Code.KEY_LENGTH
+                            + Code.VALUE_LENGTH_LENGTH, value.length);
+
+                    final InetAddress finalSrcAddr = srcAddr;
+                    final int finalSrcPort = srcPort;
+                    final InetAddress finalSrcServer = srcServer;
+                    final int finalServerPort = serverPort;
+
+                    new Thread() {
+                        public void run() {
+                            try {
+                                server.forwardRequest(uniqueRequestID, newReq, InetAddress.getByAddress(firstNode), Config.validPort[0], finalSrcAddr, finalSrcPort, false, finalSrcServer, finalServerPort);
+                                server.forwardRequest(uniqueRequestID, newReq, InetAddress.getByAddress(secondNode), Config.validPort[0], finalSrcAddr, finalSrcPort, false, finalSrcServer, finalServerPort);
+                            }catch (UnknownHostException uh){
+                                System.err.println("PASS_REQUEST:ip address corrupted, dropping message.");
+                            }
+                        }}.start();
+                    break;
+                } else {
+                    try {
+                        server.forwardRequest(uniqueRequestID, request, InetAddress.getByAddress(thirdNode), Config.validPort[0], srcAddr, srcPort, false, srcServer, serverPort);
+                    }catch (UnknownHostException uh){
+                        System.err.println("PASS_REQUEST:ip address corrupted, dropping message.");
+                    }
+                    return;
+                }
+
+            }
+            else {
+                value = table.get(parseKey(request));
+                if (value != null) {
+                    response = Response.SUCCESS;
+                    byte[] newReq = new byte[Code.CMD_LENGTH + Code.KEY_LENGTH
+                            + Code.VALUE_LENGTH_LENGTH + value.length];
+                    newReq[0] = Command.FORCE_PUT;
+
+                    System.arraycopy(key, 0, request, Code.CMD_LENGTH, Code.KEY_LENGTH);
+
+                    byte[] valLength = ByteBuffer.allocate(4)
+                            .order(ByteOrder.LITTLE_ENDIAN).putInt(value.length).array();
+                    System.arraycopy(valLength, 0, request, Code.CMD_LENGTH
+                            + Code.KEY_LENGTH, Code.VALUE_LENGTH_LENGTH);
+
+                    System.arraycopy(value, 0, request, Code.CMD_LENGTH + Code.KEY_LENGTH
+                            + Code.VALUE_LENGTH_LENGTH, value.length);
+
+
+                    final InetAddress finalSrcAddr = srcAddr;
+                    final int finalSrcPort = srcPort;
+                    final InetAddress finalSrcServer = srcServer;
+                    final int finalServerPort = serverPort;
+
+                        new Thread() {
+                            public void run() {
+                                try {
+                                server.forwardRequest(uniqueRequestID, newReq, InetAddress.getByAddress(firstNode), Config.validPort[0], finalSrcAddr, finalSrcPort, false, finalSrcServer, finalServerPort);
+                                server.forwardRequest(uniqueRequestID, newReq, InetAddress.getByAddress(secondNode), Config.validPort[0], finalSrcAddr, finalSrcPort, false, finalSrcServer, finalServerPort);
+                                }catch (UnknownHostException uh){
+                                    System.err.println("PASS_REQUEST:ip address corrupted, dropping message.");
+                                }
+                            }}.start();
+
+
+                } else {
+                    response = Response.INVALID_KEY;
+                }
+                break;
+            }
+
+            case Command.PUT:
 			if (!isValidKey(request)) {
 				response = Response.INVALID_KEY;
 				break;
@@ -215,7 +337,7 @@ public class KVServer implements RequestListener {
                     || intValueLength0 <= 0
                     || intValueLength0 > Config.MAX_APPLICATION_PAYLOAD
                     - Code.CMD_LENGTH - Code.VALUE_LENGTH_LENGTH) {
-                response = Response.INVALID_VALUE;
+
             } else {
                 byte[] v = new byte[intValueLength0 + Code.VALUE_LENGTH_LENGTH];
                 System.arraycopy(request, Code.CMD_LENGTH + Code.KEY_LENGTH, v,
@@ -259,11 +381,7 @@ public class KVServer implements RequestListener {
 			}
             break;
         case Command.FORCE_REMOVE:
-            if (table.remove(parseKey(request)) != null) {
-                response = Response.SUCCESS;
-            } else {
-                response = Response.INVALID_KEY;
-            }
+            table.remove(parseKey(request));
             System.out.println(dht.getLocalHost().getHostName() + " Calling Force_Remove");
             return;
 

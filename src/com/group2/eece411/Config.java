@@ -21,6 +21,7 @@ public class Config {
 	public final static int MAX_APPLICATION_PAYLOAD = 16384;
 	public final static int MAX_UDP_PAYLOAD = MAX_APPLICATION_PAYLOAD
 			+ REQUEST_ID_LENGTH;
+    public final static int IP_ADDRESS_LENGTH = 4;
 
 	public static class Code {
 
@@ -59,6 +60,8 @@ public class Config {
 
             public final static byte FORCE_PUT = 0x50;
             public final static byte FORCE_REMOVE = 0x51;
+
+            public final static byte FORCE_GET = 0x52;
 		}
 
 		public static class Response {
