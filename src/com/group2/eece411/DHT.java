@@ -444,6 +444,11 @@ public class DHT extends Thread {
 	}
 	
 	private void checkToken() {
+		if (initialNode) {
+			resetStates();
+			return;
+		}
+		
 		BigInteger successor = positiveBigIntegerHash(getFirstSuccessor().ip.getAddress());
 		if (successor.compareTo(endKey) < 0) {
 			leader = true;
@@ -478,6 +483,11 @@ public class DHT extends Thread {
 	}
 	
 	private void forward(List<InetAddress> list) {
+		if (initialNode) {
+			resetStates();
+			return;
+		}
+		
 		Socket clientSocket;
 		ArrayList<Successor> copy = getCopy();
 
@@ -530,10 +540,12 @@ public class DHT extends Thread {
 		}
 
 		if (i == copy.size()) {
-			System.err
-					.println("DHT.forward(): All successors are dead. Server shutting down...");
-			System.err.println("sucessor.size(): " + copy.size() + " i: " + i);
-			System.exit(1);
+			resetStates();
+			return;
+//			System.err
+//					.println("DHT.forward(): All successors are dead. Server shutting down...");
+//			System.err.println("sucessor.size(): " + copy.size() + " i: " + i);
+//			System.exit(1);
 		}
 	}
 
@@ -690,6 +702,21 @@ public class DHT extends Thread {
 			passJoin(inetNode, port, udpPort);
 		}
 	}
+	
+	private void resetStates() {
+		initialNode = true;
+		leader = false;
+		successorChecker.cancel();
+		tokenChecker.cancel();
+		
+		startKey = circularPlusOne(endKey);
+		
+		successor = new ArrayList<Successor>();
+		allNodes = new ArrayList<Darude>();
+		
+		successorChecker = new Timer();
+		tokenChecker = new Timer();
+	}
 
 	private void processUpdate(String newNode, String oldNode, int newPort,
 			int udpPort) {
@@ -812,7 +839,7 @@ public class DHT extends Thread {
 			public void run() {
 				checkToken();
 			}
-		}, 10000, 10000);
+		}, 15000, 10000);
 	}
 
 	private static BigInteger getStartKey(String predecessor) {
@@ -949,8 +976,14 @@ public class DHT extends Thread {
 	 * @return
 	 */
 	private String[] forward(String[] msg, int expectedLinesReturned) {
+		
 		String[] reply = new String[expectedLinesReturned];
 		Socket clientSocket;
+		
+		if (initialNode) {
+			resetStates();
+			return reply;
+		}
 
 		ArrayList<Successor> copy = getCopy();
 
@@ -1021,10 +1054,11 @@ public class DHT extends Thread {
 		}
 
 		if (i == copy.size()) {
-			System.err
-					.println("DHT.forward(): All successors are dead. Server shutting down...");
-			System.err.println("sucessor.size(): " + copy.size() + " i: " + i);
-			System.exit(1);
+			resetStates();
+//			System.err
+//					.println("DHT.forward(): All successors are dead. Server shutting down...");
+//			System.err.println("sucessor.size(): " + copy.size() + " i: " + i);
+//			System.exit(1);
 		}
 
 		return reply;
@@ -1068,9 +1102,12 @@ public class DHT extends Thread {
 			}
 
 			if (alive.size() == 0) {
-				System.err
-						.println("All successors are dead. Server shutting down...");
-				System.exit(1);
+				resetStates();
+				sort.release();
+				return;
+//				System.err
+//						.println("All successors are dead. Server shutting down...");
+//				System.exit(1);
 			}
 
 			ArrayList<Successor> newSuccessor = new ArrayList<Successor>();
@@ -1128,9 +1165,11 @@ public class DHT extends Thread {
 
 					// everything died
 					if (alive.size() == 0) {
-						System.err
-								.println("All successors are dead. Server shutting down...");
-						System.exit(1);
+						resetStates();
+						return;
+//						System.err
+//								.println("All successors are dead. Server shutting down...");
+//						System.exit(1);
 					}
 
 					// add new successor to list

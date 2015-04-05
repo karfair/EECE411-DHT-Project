@@ -197,6 +197,8 @@ public class UDPServer extends Thread {
 				numThreads.release();
 			} else {
 				// TODO server should/could do something on overload
+				// if it is a forwarded request, server can reply directly to client 
+				
 				// byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
 				// + Code.CMD_LENGTH];
 				// copy over unique id

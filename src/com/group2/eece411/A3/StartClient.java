@@ -9,6 +9,7 @@ import javax.xml.bind.DatatypeConverter;
 
 import com.group2.eece411.DHT;
 import com.group2.eece411.KVClient;
+import com.group2.eece411.A3.ClientThread.ClientType;
 
 public class StartClient {
 
@@ -32,6 +33,8 @@ public class StartClient {
 	 * @param args
 	 */
 	public static void main(String[] args) {
+		
+		ClientType clientType = ClientType.REMOVE;
 
 		int numClient = 5;
 		int amount = 10;
@@ -45,9 +48,16 @@ public class StartClient {
 		// String host = "pl2.cs.montana.edu";
 		// String host = "localhost";
 		// String host = "128.42.142.45";
-		// String host = "plonk.cs.uwaterloo.ca";
+		
+		
+		//group a
+		String host = "plonk.cs.uwaterloo.ca";
+		
+		//group f
+		//String host = "planetlab3.cesnet.cz";
+		
 		// String host = "planetlab1.cs.ubc.ca";
-		String host = "204.8.155.227";
+		//String host = "204.8.155.227";
 
 		if (args.length != 0) {
 			numClient = Integer.parseInt(args[0]);
@@ -155,7 +165,7 @@ public class StartClient {
 		ClientThread[] c = new ClientThread[numClient];
 		for (int i = 0; i < c.length; i++) {
 			c[i] = new ClientThread(amount, host, bytesSent, p, n, l, v, rem,
-					node, nodePort, put, get, remove);
+					node, nodePort, put, get, remove, i, clientType);
 		}
 
 		// start timing
@@ -190,6 +200,15 @@ public class StartClient {
 		System.out.println("Max put: " + (double) maxP / 1000.0
 				+ " s. Max get: " + (double) maxG / 1000.0 + " s. Max remove: "
 				+ (double) maxR / 1000.0 + " s.");
+		if (minP == Long.MAX_VALUE) {
+			minP = 0;
+		}
+		if (minG == Long.MAX_VALUE) {
+			minG = 0;
+		}
+		if (minR == Long.MAX_VALUE) {
+			minR = 0;
+		}
 		System.out.println("Min put: " + (double) minP / 1000.0
 				+ " s. Min get: " + (double) minG / 1000.0 + " s. Min remove: "
 				+ (double) minR / 1000.0 + " s.");
