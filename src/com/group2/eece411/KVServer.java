@@ -127,21 +127,35 @@ public class KVServer implements RequestListener {
 			} else {
                 /*
                 If the key is not in this node,pass the get command to its first two successors.
-                Message passed contains: Command(1byte) + IpAdress of this node + IpAdress of first Successor + 2nd Successor + key
+                Message passed contains: Command(1byte) + key + IpAdress of this node + IpAdress of first Successor + 2nd Successor
                  */
+                //find first 2 successors
                 ArrayList<DHT.Successor> firstTWo = dht.firstTwoSuccessor();
-                byte[] newReq = new byte[Code.CMD_LENGTH + 3*Config.IP_ADDRESS_LENGTH + Code.KEY_LENGTH];
-                newReq[0] = Command.FORCE_GET;
-                System.arraycopy(dht.getLocalHost().getAddress(),0,newReq,Code.CMD_LENGTH,Config.IP_ADDRESS_LENGTH);
-                int count = 0;
-                for(DHT.Successor s : firstTWo){
-                    System.arraycopy(s.ip.getAddress(),0,newReq,(count + 1)*Config.IP_ADDRESS_LENGTH + Code.CMD_LENGTH,Config.IP_ADDRESS_LENGTH);
-                    count ++;
+                if(firstTWo.isEmpty()){
+                    response = Response.INVALID_KEY;
+                    break;
                 }
 
+                byte[] newReq = new byte[Code.CMD_LENGTH + 3*Config.IP_ADDRESS_LENGTH + Code.KEY_LENGTH];
+                //put command in request
+                newReq[0] = Command.FORCE_GET;
+                //adds key to request
                 byte[] key = new byte[Code.KEY_LENGTH];
                 System.arraycopy(request, Code.CMD_LENGTH, key, 0, Code.KEY_LENGTH);
-                System.arraycopy(key,0,newReq,Code.CMD_LENGTH + 3*(Config.IP_ADDRESS_LENGTH),Code.KEY_LENGTH);
+                System.arraycopy(key,0,newReq,Code.CMD_LENGTH,Code.KEY_LENGTH);
+                //add own ip to request
+                System.arraycopy(dht.getLocalHost().getAddress(),0,newReq,Code.CMD_LENGTH + Code.KEY_LENGTH,Config.IP_ADDRESS_LENGTH);
+
+                if(firstTWo.size() == 1){
+                    System.arraycopy(firstTWo.get(0).ip,0,newReq,Config.IP_ADDRESS_LENGTH + Code.CMD_LENGTH + Code.KEY_LENGTH,Config.IP_ADDRESS_LENGTH);
+                }else {
+                    //iterate the two successors and add their ip to request
+                    int count = 0;
+                    for (DHT.Successor s : firstTWo) {
+                        System.arraycopy(s.ip.getAddress(), 0, newReq, (count + 1) * Config.IP_ADDRESS_LENGTH + Code.CMD_LENGTH + Code.KEY_LENGTH, Config.IP_ADDRESS_LENGTH);
+                        count++;
+                    }
+                }
 
                 server.forwardRequest(uniqueRequestID, newReq, firstTWo.get(0).ip, Config.validPort[0], srcAddr, srcPort, false, srcServer, serverPort);
 
@@ -153,13 +167,13 @@ public class KVServer implements RequestListener {
             byte[] thirdNode = new byte[dht.getLocalHost().getAddress().length];
             byte[] key = new byte[Code.KEY_LENGTH];
 
-            System.arraycopy(request,Code.CMD_LENGTH,firstNode,0,Config.IP_ADDRESS_LENGTH);
+            System.arraycopy(request,Code.CMD_LENGTH,key,0,Code.KEY_LENGTH);
 
-            System.arraycopy(request,Code.CMD_LENGTH+Config.IP_ADDRESS_LENGTH,secondNode,0,Config.IP_ADDRESS_LENGTH);
+            System.arraycopy(request,Code.CMD_LENGTH + Code.KEY_LENGTH,firstNode,0,Config.IP_ADDRESS_LENGTH);
 
-            System.arraycopy(request,Code.CMD_LENGTH+2*Config.IP_ADDRESS_LENGTH,thirdNode,0,Config.IP_ADDRESS_LENGTH);
+            System.arraycopy(request,Code.CMD_LENGTH+Config.IP_ADDRESS_LENGTH + Code.KEY_LENGTH,secondNode,0,Config.IP_ADDRESS_LENGTH);
 
-            System.arraycopy(request,Code.CMD_LENGTH+3*Config.IP_ADDRESS_LENGTH,key,0,Code.KEY_LENGTH);
+            System.arraycopy(request,Code.CMD_LENGTH+2*Config.IP_ADDRESS_LENGTH + Code.KEY_LENGTH,thirdNode,0,Config.IP_ADDRESS_LENGTH);
 
             if(Arrays.equals(dht.getLocalHost().getAddress(),secondNode)) {
 
@@ -197,7 +211,12 @@ public class KVServer implements RequestListener {
                             }
                         }}.start();
                     break;
-                } else {
+                }
+                byte[] only_one = new byte[Config.IP_ADDRESS_LENGTH];
+                if(Arrays.equals(only_one,thirdNode)){
+
+                }
+                else {
                     try {
                         server.forwardRequest(uniqueRequestID, request, InetAddress.getByAddress(thirdNode), Config.validPort[0], srcAddr, srcPort, false, srcServer, serverPort);
                     }catch (UnknownHostException uh){

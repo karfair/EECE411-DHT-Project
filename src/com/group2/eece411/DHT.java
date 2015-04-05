@@ -621,6 +621,9 @@ public class DHT extends Thread {
     public ArrayList<Successor> firstTwoSuccessor(){
         ArrayList<Successor> copy = getCopy();
         ArrayList<Successor> ret = new ArrayList<>();
+        if(copy.isEmpty()){
+            return ret;
+        }
         int count = 0;
         for(Successor s : copy){
             if(count >= 2) break;

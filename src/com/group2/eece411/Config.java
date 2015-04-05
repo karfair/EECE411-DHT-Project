@@ -62,6 +62,8 @@ public class Config {
             public final static byte FORCE_REMOVE = 0x51;
 
             public final static byte FORCE_GET = 0x52;
+
+            public final static byte ONLY_ONE = 0x06;
 		}
 
 		public static class Response {
