@@ -35,7 +35,7 @@ public class FakeUDP extends Thread {
 		while (running) {
 			try {
 				Socket clientSocket = serverSocket.accept();
-				new ClientHandler(clientSocket).start();
+				UDPServer.requestThreads.execute(new ClientHandler(clientSocket));
 			} catch (IOException e) {
 				// probably means it is communicating to has died
 				// or the dht is shutting down
@@ -145,12 +145,12 @@ public class FakeUDP extends Thread {
 		}
 	}*/
 
-	private class ClientHandler extends Thread {
+	private class ClientHandler implements Runnable {
 
 		Socket clientSocket;
 
 		public ClientHandler(Socket clientSocket) {
-			super("ClientHandler");
+			//super("ClientHandler");
 			this.clientSocket = clientSocket;
 		}
 
@@ -161,21 +161,15 @@ public class FakeUDP extends Thread {
 						clientSocket.getInputStream());
 				int len;
 
-				while (true) {
-					len = dis.readInt();
-					byte[] data = new byte[len];
-					dis.readFully(data);
+				len = dis.readInt();
+				byte[] data = new byte[len];
+				dis.readFully(data);
+				clientSocket.close();
 
-					udp.processDatagram(new DatagramPacket(data, data.length));
-				}
+				udp.processDatagram(new DatagramPacket(data, data.length));
+
 			} catch (IOException e) {
 				// socket has been closed, do nothing
-			}
-
-			try {
-				clientSocket.close();
-			} catch (IOException e) {
-				// if it didn't close properly, does not matter
 			}
 		}
 	}

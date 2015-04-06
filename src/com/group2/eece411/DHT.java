@@ -33,7 +33,7 @@ public class DHT extends Thread {
 	 * InetAddress of the successor of this node
 	 */
 	private ArrayList<Successor> successor = new ArrayList<Successor>();
-	private int maxSuccessor = 5;
+	private int maxSuccessor = 3;
 	// private InetAddress[] successor = new InetAddress[2];
 	// private int[] successorPort = new int[2];
 	// private int[] successorUDPPort = new int[2];
@@ -618,21 +618,23 @@ public class DHT extends Thread {
 		return last;*/
 	}
 
-    public ArrayList<Successor> firstTwoSuccessor(){
-        ArrayList<Successor> copy = getCopy();
-        ArrayList<Successor> ret = new ArrayList<>();
-        if(copy.isEmpty()){
-            return ret;
-        }
-        int count = 0;
-        for(Successor s : copy){
-            if(count >= 2) break;
-            if(s.isAlive()){
-                ret.add(s);
-            }
-        }
-        return ret;
-    }
+	public ArrayList<Successor> firstTwoSuccessor() {
+		ArrayList<Successor> copy = getCopy();
+		ArrayList<Successor> ret = new ArrayList<>();
+		if (copy.isEmpty()) {
+			return ret;
+		}
+		int count = 0;
+		for (Successor s : copy) {
+			if (count >= 2)
+				break;
+			if (s.isAlive()) {
+				ret.add(s);
+				count++;
+			}
+		}
+		return ret;
+	}
 
 	// send successor, regardless of deadness or aliveness for correctness of
 	// update need to be held to ensure correctness
@@ -859,7 +861,7 @@ public class DHT extends Thread {
 			public void run() {
 				checkToken();
 			}
-		}, 15000, 10000);
+		}, 10000, 5000);
 	}
 
 	private static BigInteger getStartKey(String predecessor) {

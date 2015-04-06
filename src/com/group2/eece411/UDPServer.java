@@ -22,16 +22,16 @@ import com.group2.eece411.Config.Code.Command;
 
 public class UDPServer extends Thread {
 
-	private static final int MAX_THREADS = 4;
-	private static final int MAX_QUEUE = 40;
+	private static final int MAX_THREADS = 6;
+	private static final int MAX_QUEUE = 100;
 
 	// hold on to responses for a while so they aren't repeated
 	// creates a processed response list
 	private ResponseHolder rs = new ResponseHolder();
 	// handles each packet as a thread
-	private ExecutorService requestThreads = Executors
+	public static ExecutorService requestThreads = Executors
 			.newFixedThreadPool(MAX_THREADS);
-	private Semaphore numThreads = new Semaphore(MAX_QUEUE);
+	public static Semaphore numThreads = new Semaphore(MAX_QUEUE);
 
 	private DatagramSocket socket = null;
 

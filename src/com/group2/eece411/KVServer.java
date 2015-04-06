@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import javax.xml.bind.DatatypeConverter;
+
 import com.group2.eece411.Config.Code;
 import com.group2.eece411.Config.Code.Command;
 import com.group2.eece411.Config.Code.Response;
@@ -130,6 +132,10 @@ public class KVServer implements RequestListener {
                 Message passed contains: Command(1byte) + key + IpAdress of this node + IpAdress of first Successor + 2nd Successor
                  */
                 //find first 2 successors
+				// put in this port
+				srcServer = dht.getLocalHost();
+				serverPort = server.getPort();
+				
                 ArrayList<DHT.Successor> firstTWo = dht.firstTwoSuccessor();
                 if(firstTWo.isEmpty()){
                     response = Response.INVALID_KEY;
@@ -147,7 +153,7 @@ public class KVServer implements RequestListener {
                 System.arraycopy(dht.getLocalHost().getAddress(),0,newReq,Code.CMD_LENGTH + Code.KEY_LENGTH,Config.IP_ADDRESS_LENGTH);
 
                 if(firstTWo.size() == 1){
-                    System.arraycopy(firstTWo.get(0).ip,0,newReq,Config.IP_ADDRESS_LENGTH + Code.CMD_LENGTH + Code.KEY_LENGTH,Config.IP_ADDRESS_LENGTH);
+                    System.arraycopy(firstTWo.get(0).ip.getAddress(),0,newReq,Config.IP_ADDRESS_LENGTH + Code.CMD_LENGTH + Code.KEY_LENGTH,Config.IP_ADDRESS_LENGTH);
                 }else {
                     //iterate the two successors and add their ip to request
                     int count = 0;
@@ -162,6 +168,8 @@ public class KVServer implements RequestListener {
                 return;
 			}
         case Command.FORCE_GET:
+        	System.out.println("//////////////\n2nd pass.");
+        	
             byte[] firstNode = new byte[dht.getLocalHost().getAddress().length];
             byte[] secondNode = new byte[dht.getLocalHost().getAddress().length];
             byte[] thirdNode = new byte[dht.getLocalHost().getAddress().length];
@@ -175,10 +183,15 @@ public class KVServer implements RequestListener {
 
             System.arraycopy(request,Code.CMD_LENGTH+2*Config.IP_ADDRESS_LENGTH + Code.KEY_LENGTH,thirdNode,0,Config.IP_ADDRESS_LENGTH);
 
+            value = table.get(parseKey(request));
+            System.out.println("first:" + DatatypeConverter.printHexBinary(firstNode));
+            System.out.println("2nd  :" + DatatypeConverter.printHexBinary(secondNode));
+            System.out.println("3rd  :" + DatatypeConverter.printHexBinary(thirdNode));
+        	System.out.println("this :" + DatatypeConverter.printHexBinary(dht.getLocalHost().getAddress()));
+            
             if(Arrays.equals(dht.getLocalHost().getAddress(),secondNode)) {
-
-                value = table.get(parseKey(request));
-
+            	System.out.println("2nd pass.");
+            	byte[] only_one = new byte[Config.IP_ADDRESS_LENGTH];
                 if (value != null) {
                     response = Response.SUCCESS;
                     byte[] newReq = new byte[Code.CMD_LENGTH + Code.KEY_LENGTH
@@ -205,18 +218,21 @@ public class KVServer implements RequestListener {
                         public void run() {
                             try {
                                 server.forwardRequest(uniqueRequestID, newReq, InetAddress.getByAddress(firstNode), Config.validPort[0], finalSrcAddr, finalSrcPort, false, finalSrcServer, finalServerPort);
-                                server.forwardRequest(uniqueRequestID, newReq, InetAddress.getByAddress(secondNode), Config.validPort[0], finalSrcAddr, finalSrcPort, false, finalSrcServer, finalServerPort);
+                                if (!Arrays.equals(only_one, thirdNode)) {
+                                	server.forwardRequest(uniqueRequestID, newReq, InetAddress.getByAddress(thirdNode), Config.validPort[0], finalSrcAddr, finalSrcPort, false, finalSrcServer, finalServerPort);
+                                }
                             }catch (UnknownHostException uh){
                                 System.err.println("PASS_REQUEST:ip address corrupted, dropping message.");
                             }
                         }}.start();
                     break;
                 }
-                byte[] only_one = new byte[Config.IP_ADDRESS_LENGTH];
+                
+                // passes it third node if not found
                 if(Arrays.equals(only_one,thirdNode)){
-
-                }
-                else {
+                	response = Response.INVALID_KEY;
+                	break;
+				} else {
                     try {
                         server.forwardRequest(uniqueRequestID, request, InetAddress.getByAddress(thirdNode), Config.validPort[0], srcAddr, srcPort, false, srcServer, serverPort);
                     }catch (UnknownHostException uh){
@@ -224,10 +240,8 @@ public class KVServer implements RequestListener {
                     }
                     return;
                 }
-
-            }
-            else {
-                value = table.get(parseKey(request));
+			} else {
+				System.out.println("I am third node!");
                 if (value != null) {
                     response = Response.SUCCESS;
                     byte[] newReq = new byte[Code.CMD_LENGTH + Code.KEY_LENGTH
@@ -259,14 +273,12 @@ public class KVServer implements RequestListener {
                                     System.err.println("PASS_REQUEST:ip address corrupted, dropping message.");
                                 }
                             }}.start();
-
-
+                    break;
                 } else {
                     response = Response.INVALID_KEY;
+                    break;
                 }
-                break;
             }
-
             case Command.PUT:
 			if (!isValidKey(request)) {
 				response = Response.INVALID_KEY;
