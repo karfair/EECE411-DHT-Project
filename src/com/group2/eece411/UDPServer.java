@@ -5,6 +5,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -41,7 +42,7 @@ public class UDPServer extends Thread {
 	private RequestListener requestListener;
 
 	// system overload threads
-	private Executor overloadThreads = Executors.newFixedThreadPool(2);
+	public static Executor overloadThreads = Executors.newFixedThreadPool(5);
 
 	// fake udp
 	public FakeUDP fakeudp;
@@ -166,6 +167,15 @@ public class UDPServer extends Thread {
 		public void run() {
 			// get the receive data
 			byte[] data = packet.getData();
+			
+			boolean actuallyOverloaded = overloaded;
+			if (overloaded) {
+				if (data.length > 16) {
+					if (data[16] == Command.RETURN_RESPONSE) {
+						overloaded = false;
+					}
+				}
+			}
 
 			if (!overloaded) {
 				// get the uniqueRequestID
@@ -194,30 +204,59 @@ public class UDPServer extends Thread {
 						e.printStackTrace();
 					}
 				}
-				numThreads.release();
+				if (!actuallyOverloaded) {
+					numThreads.release();
+				}
 			} else {
-				// TODO server should/could do something on overload
-				// if it is a forwarded request, server can reply directly to client 
-				
-				// byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
-				// + Code.CMD_LENGTH];
+				// system overload
+				byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
+						+ Code.CMD_LENGTH];
 				// copy over unique id
-				// System.arraycopy(data, 0, sendBuf, 0,
-				// Config.REQUEST_ID_LENGTH);
+				System.arraycopy(data, 0, sendBuf, 0, Config.REQUEST_ID_LENGTH);
 				// put in error code
-				// sendBuf[Config.REQUEST_ID_LENGTH] =
-				// Config.Code.Response.SYSTEM_OVERLOAD;
+				sendBuf[Config.REQUEST_ID_LENGTH] = Config.Code.Response.SYSTEM_OVERLOAD;
 
 				// construct datagram
-				// DatagramPacket d = new DatagramPacket(sendBuf,
-				// Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH,
-				// packet.getAddress(), packet.getPort());
+				DatagramPacket d;
+				if (data.length > 16) {
+					if (data[16] == Command.PASS_REQUEST) {
+						// source client
+						byte[] ip = new byte[4];
+						byte[] port = new byte[4];
 
-				// try {
-				// socket.send(d);
-				// } catch (IOException e1) {
-				// e1.printStackTrace();
-				// }
+						System.arraycopy(data, 17, ip, 0, 4);
+						System.arraycopy(data, 17 + 4, port, 0, 4);
+
+						InetAddress src;
+						try {
+							src = InetAddress.getByAddress(ip);
+						} catch (UnknownHostException e) {
+							System.err
+									.println("system overload:ip address corrupted, dropping message.");
+							return;
+						}
+						int intPort = ByteBuffer.wrap(port).getInt();
+
+						d = new DatagramPacket(sendBuf,
+								Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH,
+								src, intPort);
+					} else {
+						d = new DatagramPacket(sendBuf,
+								Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH,
+								packet.getAddress(), packet.getPort());
+					}
+				} else {
+					System.err
+							.println("system overload:message corrupted, dropping message.");
+					return;
+				}
+
+				try {
+					socket.send(d);
+				} catch (IOException e1) {
+					System.err.println("ERR (system overload): unable to reply to client!");
+					e1.printStackTrace();
+				}
 			}
 		}
 	}
@@ -229,7 +268,7 @@ public class UDPServer extends Thread {
 		 * processed packet (a response) with a uniqueRequestID, so that it does
 		 * not get reprocessed.
 		 */
-		private final static int RESPONSE_HOLD_TIME = 18000;
+		private final static int RESPONSE_HOLD_TIME = 6000;
 
 		private ConcurrentHashMap<String, DatagramPacket> map;
 		private LinkedBlockingQueue<Response> newResponse;
@@ -435,7 +474,11 @@ public class UDPServer extends Thread {
 
 		// send/resend the response
 		try {
-			FakeUDP.send(response);
+			if (request.length > 1000) {
+				FakeUDP.send(response);
+			} else {
+				socket.send(response);
+			}
 		} catch (IOException e) {
 			// failed to send
 			// e.printStackTrace();

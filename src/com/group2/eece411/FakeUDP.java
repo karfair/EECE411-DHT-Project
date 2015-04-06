@@ -35,7 +35,7 @@ public class FakeUDP extends Thread {
 		while (running) {
 			try {
 				Socket clientSocket = serverSocket.accept();
-				UDPServer.requestThreads.execute(new ClientHandler(clientSocket));
+				UDPServer.overloadThreads.execute(new ClientHandler(clientSocket));
 			} catch (IOException e) {
 				// probably means it is communicating to has died
 				// or the dht is shutting down
@@ -166,10 +166,12 @@ public class FakeUDP extends Thread {
 				dis.readFully(data);
 				clientSocket.close();
 
-				udp.processDatagram(new DatagramPacket(data, data.length));
+				udp.processDatagram(new DatagramPacket(data, data.length, clientSocket.getInetAddress(), Config.validPort[0]));
 
-			} catch (IOException e) {
+			} catch (Exception e) {
 				// socket has been closed, do nothing
+				System.err.println("ERROR rcving msg!");
+				e.printStackTrace();
 			}
 		}
 	}

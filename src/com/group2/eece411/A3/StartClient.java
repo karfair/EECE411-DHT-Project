@@ -14,8 +14,8 @@ import com.group2.eece411.A3.ClientThread.ClientType;
 public class StartClient {
 
 	public static int multiplier = 1;
-	public static int timeout = 1000;
-	public static int tries = 5;
+	public static int timeout = 3000;
+	public static int tries = 3;
 	public static int maxValueLength = 1000;
 
 	public static Object minMaxLock = new Object();
@@ -36,14 +36,15 @@ public class StartClient {
 		
 		ClientType clientType = ClientType.GET;
 
-		int numClient = 5;
-		int amount = 50;
+		int numClient = 10;
+		int amount = 100;
 		// String host = "128.208.4.199";
 		// String host = "planetlab1.dojima.wide.ad.jp";
 		// String host = "roam1.cs.ou.edu";
 		// String host = "ricepl-2.cs.rice.edu";
 		// String host = "cs-planetlab3.cs.surrey.sfu.ca";
 		// String host = "planetlab1.cs.ubc.ca";
+		 //String host = "129.32.84.160";
 		// String host = "pl1.cs.montana.edu";
 		// String host = "pl2.cs.montana.edu";
 		// String host = "localhost";

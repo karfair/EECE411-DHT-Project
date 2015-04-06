@@ -27,7 +27,7 @@ public class KillRandom {
 		// String host = "roam1.cs.ou.edu";
 		// String host = "ricepl-2.cs.rice.edu";
 		// String host = "cs-planetlab3.cs.surrey.sfu.ca";
-		// String host = "planetlab1.cs.ubc.ca";
+		//String host = "planetlab1.cs.ubc.ca";
 		// String host = "pl1.cs.montana.edu";
 		// String host = "pl2.cs.montana.edu";
 		// String host = "localhost";
@@ -42,9 +42,9 @@ public class KillRandom {
 		// String host = "planetlab1.cs.ubc.ca";
 		// String host = "204.8.155.227";
 		
-		// kill 2 nodes, skip 1, kill 2 more, skip 1, etc...
-		int kill = 2;
+		// skip 1, kill 2, skip 1, etc...
 		int skip = 1;
+		int kill = 2;
 
 		// run a basic test
 		KVClient client = new KVClient(host);
@@ -138,7 +138,7 @@ public class KillRandom {
 		int maxCycles = (node.length / cycleLength) * cycleLength;
 		
 		for (int i = 0; i < maxCycles; i++) {
-			if (i % cycleLength < kill) {
+			if (i % cycleLength >= skip) {
 				udp.changeDest(node[i].getHostAddress(), 6772);
 				try {
 					udp.sendAndWaitFor(cmd, 1, 1, 1);

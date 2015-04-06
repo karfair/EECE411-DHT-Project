@@ -263,6 +263,8 @@ public class UDPClient implements Closeable {
 						+ defaultTries
 						+ " tries. uniqueID: "
 						+ DatatypeConverter.printHexBinary(uniqueRequestID);
+				System.out.println(msg);
+				System.exit(1);
 				throw new IOException(msg);
 			}
 

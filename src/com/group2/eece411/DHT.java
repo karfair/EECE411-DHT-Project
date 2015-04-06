@@ -28,7 +28,7 @@ public class DHT extends Thread {
 	private static final int DEFAULT_DHT_TCP_PORT = 7775;
 
 	private static boolean VERBOSE = false;
-	private static boolean LESS_VERBOSE = false;
+	private static boolean LESS_VERBOSE = true;
 	/**
 	 * InetAddress of the successor of this node
 	 */
@@ -245,6 +245,9 @@ public class DHT extends Thread {
 				System.err.println("DHT server failed! -> IOException");
 				e.printStackTrace();
 
+			} catch (Exception e) {
+				System.err.println("DHT server failed! -> something really weird...");
+				e.printStackTrace();
 			}
 		}
 	}
@@ -449,6 +452,7 @@ public class DHT extends Thread {
 			return;
 		}
 		
+		boolean leader;
 		BigInteger successor = positiveBigIntegerHash(getFirstSuccessor().ip.getAddress());
 		if (successor.compareTo(endKey) < 0) {
 			leader = true;
@@ -462,7 +466,7 @@ public class DHT extends Thread {
 			}
 		}
 		
-		if (TOKEN_VERBOSE && leader) {
+		if (TOKEN_VERBOSE) {
 			List<Darude> allNodes = this.allNodes;
 			
 			String ip = "";
@@ -582,17 +586,23 @@ public class DHT extends Thread {
 	}
 
 	public Successor closestSuccessorTo(byte[] key) {
+		
 		List<Darude> allNodes = this.allNodes;
-		int location = Collections.binarySearch(allNodes, positiveBigIntegerHash(key));
+		// algorithm does not for under 3 nodes
+		if (allNodes.size() >= 3) {
+			int location = Collections.binarySearch(allNodes, positiveBigIntegerHash(key));
 		
-		// if not found, that means it is the highest number in the list, so 
-		// the highest # is stored on the 1st node
-		location = location < 0 ? 0 : location;
-		
-		Darude d = allNodes.get(location);
-		return new Successor(d.addr, DEFAULT_DHT_TCP_PORT, 6772);
-		
+			// if not found, that means it is the highest number in the list, so 
+			// the highest # is stored on the 1st node
+			location = location < 0 ? 0 : location;
+			
+			Darude d = allNodes.get(location);
+			return new Successor(d.addr, DEFAULT_DHT_TCP_PORT, 6772);
+		} else {
+			return getFirstSuccessor();
+		}
 		/*
+		
 		ArrayList<Successor> a = getCopy();
 		BigInteger wrapKey = positiveBigIntegerHash(key);
 		BigInteger startKey = circularPlusOne(endKey);
@@ -626,11 +636,11 @@ public class DHT extends Thread {
 		}
 		int count = 0;
 		for (Successor s : copy) {
-			if (count >= 2)
-				break;
 			if (s.isAlive()) {
 				ret.add(s);
 				count++;
+				if (count >= 2)
+					break;
 			}
 		}
 		return ret;
@@ -848,20 +858,21 @@ public class DHT extends Thread {
 		startCheckSuccessor();
 	}
 
+	//TODO
 	private void startCheckSuccessor() {
 		successorChecker.scheduleAtFixedRate(new TimerTask() {
 			@Override
 			public void run() {
 				checkSuccessor();
 			}
-		}, 5000, 5000);
+		}, 5000, 8000);
 		
 		tokenChecker.scheduleAtFixedRate(new TimerTask() {
 			@Override
 			public void run() {
 				checkToken();
 			}
-		}, 10000, 5000);
+		}, 10000, 20000);
 	}
 
 	private static BigInteger getStartKey(String predecessor) {
