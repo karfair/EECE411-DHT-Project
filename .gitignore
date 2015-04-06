@@ -42,3 +42,6 @@ local.properties
 /.idea/
 MANIFEST.MF
 EECE411-A3.iml
+
+#generated files
+result*
