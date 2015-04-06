@@ -430,12 +430,23 @@ public class KVServer implements RequestListener {
 					srcServer = dht.getLocalHost();
 					serverPort = server.getPort();
 				}
-				ArrayList<DHT.Successor> firstTwo = dht.firstTwoSuccessor();
-				for (DHT.Successor s : firstTwo) {
-					server.forwardRequest(uniqueRequestID, request, s.ip,
-							s.udpPort, srcAddr, srcPort, false, srcServer,
-							serverPort);
-				}
+				
+				InetAddress finalSrcAddr = srcAddr;
+				int finalSrcPort = srcPort;
+				InetAddress finalSrcServer = srcServer;
+				int finalServerPort = serverPort;
+				
+				new Thread() {
+					public void run() {
+						ArrayList<DHT.Successor> firstTwo = dht
+								.firstTwoSuccessor();
+						for (DHT.Successor s : firstTwo) {
+							server.forwardRequest(uniqueRequestID, request,
+									s.ip, s.udpPort, finalSrcAddr, finalSrcPort, false,
+									finalSrcServer, finalServerPort);
+						}
+					}
+				}.start();
 
 				response = Response.SUCCESS;
 			}
