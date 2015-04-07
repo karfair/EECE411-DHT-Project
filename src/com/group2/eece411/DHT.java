@@ -1,6 +1,9 @@
 package com.group2.eece411;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -28,7 +31,7 @@ public class DHT extends Thread {
 	private static final int DEFAULT_DHT_TCP_PORT = 7775;
 
 	private static boolean VERBOSE = false;
-	private static boolean LESS_VERBOSE = true;
+	private static boolean LESS_VERBOSE = false;
 	/**
 	 * InetAddress of the successor of this node
 	 */
@@ -68,10 +71,11 @@ public class DHT extends Thread {
 	// sort successor lock
 	private Semaphore sort = new Semaphore(1);
 	
+	private Semaphore darudeLock = new Semaphore(1);
+	
 	//
 	private List<Darude> allNodes = new ArrayList<Darude>();
 	private Timer tokenChecker = new Timer();
-	private boolean leader = false;
 	private AtomicLong lastTokenReceived = new AtomicLong(System.currentTimeMillis());
 	
 	private static final boolean TOKEN_VERBOSE = true;
@@ -90,7 +94,7 @@ public class DHT extends Thread {
 	 *            - client port
 	 */
 	public DHT(boolean initialNode, String initialNodeName, int port,
-			int UDPPort) {
+			int UDPPort, String nodeList) {
 
 		try {
 			this.thisNode = InetAddress.getLocalHost();
@@ -125,6 +129,86 @@ public class DHT extends Thread {
 			e.printStackTrace();
 			System.exit(1);
 		}
+		
+		if (nodeList != null) {
+			// create a successor list from file
+			File f = new File(nodeList);
+			BufferedReader in = null;
+			try {
+				in = new BufferedReader(new FileReader(f));
+			} catch (FileNotFoundException e) {
+				System.err.println("ERR: nodelist not found!");
+				e.printStackTrace();
+				System.exit(1);
+			}
+			
+			// load it into an inet list
+			String line;
+			List<EndKeyWithAddress> list = new ArrayList<EndKeyWithAddress>();
+			try {
+				while ((line = in.readLine()) != null) {
+					list.add(new EndKeyWithAddress(InetAddress.getByName(line)));
+				}
+			} catch (IOException e) {
+				System.err.println("ERR: unable to read nodelist!");
+				e.printStackTrace();
+				System.exit(1);
+			}
+			Collections.sort(list);
+			
+			// find 3 successors
+			int index;
+			for (index = 0; index < list.size(); index++) {
+				if (list.get(index).endKey.equals(endKey)) {
+					break;
+				}
+			}
+			ArrayList<Successor> su = new ArrayList<Successor>();
+			for (int i = 1; i <= maxSuccessor; i++) {
+				su.add(new Successor(list.get((index + i) % list.size()).addr, DEFAULT_DHT_TCP_PORT, Config.validPort[0]));
+			}
+			
+			successor = su;
+			
+			if (TOKEN_VERBOSE) {
+				System.out.println("This node:" + thisNode.getHostAddress());
+				System.out.println("This node:" + list.get(index).addr.getHostAddress());
+				System.out.println("successor1:" + su.get(0).ip.getHostAddress());
+				System.out.println("successor2:" + su.get(1).ip.getHostAddress());
+				System.out.println("successor3:" + su.get(2).ip.getHostAddress());
+				
+				String ip = "";
+				String hash = "";
+				for (EndKeyWithAddress d : list) {
+					
+					String key = d.endKey.toString();
+					String partialKey = key.substring(0, 5) + "..." + key.charAt(key.length() - 1) + " " + key.length();
+					
+					ip += d.addr.getHostAddress() + "\n";
+					hash += partialKey + "\n";
+				}
+				System.out.println(ip);
+				System.out.println(hash);
+			}
+			
+			// set initial node to false
+			this.initialNode = false;
+		}
+	}
+	
+	private static class EndKeyWithAddress implements Comparable<EndKeyWithAddress> {
+		public final BigInteger endKey;
+		public final InetAddress addr;
+		
+		public EndKeyWithAddress(InetAddress addr) {
+			this.addr = addr;
+			endKey = positiveBigIntegerHash(addr.getAddress());
+		}
+
+		@Override
+		public int compareTo(EndKeyWithAddress o) {
+			return endKey.compareTo(o.endKey);
+		}
 	}
 
 	public int getLocalPort() {
@@ -158,7 +242,22 @@ public class DHT extends Thread {
 	@Override
 	public void run() {
 		if (!initialNode) {
-			sendInitialJoinRequest();
+			if (successor.size() != 0) {
+				startKey = circularPlusOne(endKey);
+				new Thread() {
+					public void run() {
+						try {
+							Thread.sleep(20000);
+						} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+
+						startCheckSuccessor();
+					}
+				}.start();
+			} else {
+				sendInitialJoinRequest();
+			}
 		} else {
 			startKey = circularPlusOne(endKey);
 		}
@@ -179,7 +278,11 @@ public class DHT extends Thread {
 				// System.out.println(input);
 				
 				if (input.contains("token")) {
-					new DarudeSandstorm(clientSocket).start();
+					if (darudeLock.tryAcquire()) {
+						new DarudeSandstorm(clientSocket).start();
+					} else {
+						clientSocket.close();
+					}
 				} else {
 					InputStreamReader isr = new InputStreamReader(
 							clientSocket.getInputStream());
@@ -260,7 +363,7 @@ public class DHT extends Thread {
 	public static class Darude implements Comparable<Object> {
 		public final InetAddress addr;
 		public final BigInteger endKey;
-		public final BigInteger startKey;
+		public BigInteger startKey;
 		
 		private final boolean endKeyGreaterThanStart;
 
@@ -357,6 +460,7 @@ public class DHT extends Thread {
 			lastTokenReceived.set(System.currentTimeMillis());
 			darude();
 			forward(list, "token");
+			darudeLock.release();
 		}
 		
 		/**
@@ -460,8 +564,12 @@ public class DHT extends Thread {
 			leader = false;
 		}
 		
+		//if (thisNode.getHostAddress().equals("142.103.2.1")) {
 		if (leader) {
-			if (System.currentTimeMillis() - lastTokenReceived.get() > 10000) {
+			if (TOKEN_VERBOSE) {
+				System.out.println("generating token");
+			}
+			if (System.currentTimeMillis() - lastTokenReceived.get() > 60000) {
 				forward(new ArrayList<InetAddress>(), "token");
 			}
 		}
@@ -517,7 +625,6 @@ public class DHT extends Thread {
 				// if any of the read or write operations fails, control will
 				// continue here, we will log the server that had failed
 				// and try the next server
-				s.setDead();
 				if (VERBOSE) {
 					System.out.println("node " + i + " just died. msg:"
 							+ e.getMessage());
@@ -736,8 +843,9 @@ public class DHT extends Thread {
 	}
 	
 	private void resetStates() {
+		Throwable t = new Throwable();
+		t.printStackTrace();
 		initialNode = true;
-		leader = false;
 		successorChecker.cancel();
 		tokenChecker.cancel();
 		

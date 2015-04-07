@@ -28,19 +28,19 @@ public class KVServer implements RequestListener {
 	private DHT dht;
 
 	public KVServer(int maxStorage, boolean initialNode,
-			String initialNodeName, int port) {
+			String initialNodeName, int port, String nodeList) {
 		this.maxSize = maxStorage;
 		table = new KVStore();
 
 		server = new UDPServer(this);
-		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort());
+		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort(), nodeList);
 	}
 
 	public KVServer(boolean initialNode, String initialNodeName, int port) {
 		table = new KVStore();
 
 		server = new UDPServer(this);
-		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort());
+		this.dht = new DHT(initialNode, initialNodeName, port, server.getPort(), null);
 	}
 
 	public void start() {
