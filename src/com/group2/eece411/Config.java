@@ -16,7 +16,7 @@ public class Config {
 	 * server will attempt to bind with validPort[0] first, if that is not
 	 * available, it will try validPort[1], and so on...
 	 */
-	public final static int[] validPort = { 6772, 52180, 7632, 30541, 27411 };
+	public final static int[] validPort = { 6772 };
 
 	public final static int MAX_APPLICATION_PAYLOAD = 16384;
 	public final static int MAX_UDP_PAYLOAD = MAX_APPLICATION_PAYLOAD
