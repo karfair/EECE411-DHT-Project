@@ -198,7 +198,7 @@ public class KVClient implements Closeable {
 		request[0] = Command.GET_ALL_NODES;
 		byte[] rcv = null;
 		try {
-			rcv = u.sendAndWaitFor(request, 10000, 1, 5); // 10 sec
+			rcv = u.sendAndWaitFor(request, 50000, 1, 1); // 10 sec
 															// 1 multiplier
 															// 5tries
 		} catch (IOException e) {

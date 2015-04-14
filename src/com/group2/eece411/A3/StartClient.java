@@ -1,8 +1,15 @@
 package com.group2.eece411.A3;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.xml.bind.DatatypeConverter;
@@ -16,7 +23,7 @@ public class StartClient {
 	public static int multiplier = 1;
 	public static int timeout = 3000;
 	public static int tries = 3;
-	public static int maxValueLength = 1000;
+	public static int maxValueLength = 50;
 
 	public static Object minMaxLock = new Object();
 	public static long maxP = 0, maxG = 0, maxR = 0;
@@ -33,17 +40,19 @@ public class StartClient {
 	 * @param args
 	 */
 	public static void main(String[] args) {
+		boolean readFromFile = false;
 		
-		ClientType clientType = ClientType.GET;
+		ClientType clientType = ClientType.ALL
+				;
 
 		int numClient = 10;
-		int amount = 100;
+		int amount = 20;
 		// String host = "128.208.4.199";
 		// String host = "planetlab1.dojima.wide.ad.jp";
 		// String host = "roam1.cs.ou.edu";
 		// String host = "ricepl-2.cs.rice.edu";
 		// String host = "cs-planetlab3.cs.surrey.sfu.ca";
-		// String host = "planetlab1.cs.ubc.ca";
+		//String host = "planetlab1.cs.ubc.ca";
 		 //String host = "129.32.84.160";
 		// String host = "pl1.cs.montana.edu";
 		// String host = "pl2.cs.montana.edu";
@@ -122,30 +131,61 @@ public class StartClient {
 		String nodes = "";
 		String hash = "";
 
-		if ((ret = client.getAllNodes()) != null) {
-			byte[] inet = new byte[4];
-			byte[] port = new byte[4];
-			node = new InetAddress[ret.length / 8];
-			nodePort = new int[ret.length / 8];
-
-			System.out.println("getAllNodes() passed! len:" + ret.length
-					+ " num nodes: " + ret.length / 8);
-
-			for (int i = 0; i < ret.length / 8; i++) {
-				System.arraycopy(ret, i * 8, inet, 0, 4);
-				System.arraycopy(ret, i * 8 + 4, port, 0, 4);
-				try {
-					node[i] = InetAddress.getByAddress(inet);
-					nodePort[i] = ByteBuffer.wrap(port).getInt();
-
-					nodes += node[i].getHostAddress() + ":" + nodePort[i]
-							+ "\n";
-				} catch (UnknownHostException e) {
+		if (readFromFile) {
+			File f = new File("100.txt");
+			BufferedReader in = null;
+			try {
+				in = new BufferedReader(new FileReader(f));
+			} catch (FileNotFoundException e) {
+				System.err.println("ERR: nodes.txt not found!");
+				e.printStackTrace();
+				System.exit(1);
+			}
+			String line;
+			List<InetAddress> list = new ArrayList<InetAddress>();
+			try {
+				while ((line = in.readLine()) != null) {
+					try {
+						list.add(InetAddress.getByName(line));
+					} catch (UnknownHostException e) {
+					}
 				}
-				hash += DHT.positiveBigIntegerHash(inet).toString() + "\n";
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			node = new InetAddress[list.size()];
+			nodePort = new int[list.size()];
+			for (int i = 0; i < node.length; i++) {
+				node[i] = list.get(i);
+				nodePort[i] = 6772;
 			}
 		} else {
-			System.out.println("getAllNodes() failed!");
+			if ((ret = client.getAllNodes()) != null) {
+				byte[] inet = new byte[4];
+				byte[] port = new byte[4];
+				node = new InetAddress[ret.length / 8];
+				nodePort = new int[ret.length / 8];
+	
+				System.out.println("getAllNodes() passed! len:" + ret.length
+						+ " num nodes: " + ret.length / 8);
+	
+				for (int i = 0; i < ret.length / 8; i++) {
+					System.arraycopy(ret, i * 8, inet, 0, 4);
+					System.arraycopy(ret, i * 8 + 4, port, 0, 4);
+					try {
+						node[i] = InetAddress.getByAddress(inet);
+						nodePort[i] = ByteBuffer.wrap(port).getInt();
+	
+						nodes += node[i].getHostAddress() + ":" + nodePort[i]
+								+ "\n";
+					} catch (UnknownHostException e) {
+					}
+					hash += DHT.positiveBigIntegerHash(inet).toString() + "\n";
+				}
+			} else {
+				System.out.println("getAllNodes() failed!");
+				System.exit(1);
+			}
 		}
 		System.out.print(nodes + hash);
 		System.out.println("getAllNodes() time taken: "
