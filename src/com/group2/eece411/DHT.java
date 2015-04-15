@@ -29,8 +29,8 @@ public class DHT extends Thread {
 
 	private static final int DEFAULT_DHT_TCP_PORT = 7775;
 
-	private static boolean VERBOSE = true;
-	private static boolean LESS_VERBOSE = true;
+	private static boolean VERBOSE = false;
+	private static boolean LESS_VERBOSE = false;
 	/**
 	 * InetAddress of the successor of this node
 	 */
@@ -77,7 +77,7 @@ public class DHT extends Thread {
 	private Timer tokenChecker = new Timer();
 	private AtomicLong lastTokenReceived = new AtomicLong(System.currentTimeMillis());
 	
-	private static final boolean TOKEN_VERBOSE = false;
+	private static final boolean TOKEN_VERBOSE = true;
 	
 	private ArrayList<InetAddress> tempNodeList = new ArrayList<InetAddress>();
 
@@ -603,7 +603,7 @@ public class DHT extends Thread {
 		//if (thisNode.getHostAddress().equals("142.103.2.1")) {
 		//TODO
 		if (leader) {
-			if (System.currentTimeMillis() - lastTokenReceived.get() > 10000) {
+			if (System.currentTimeMillis() - lastTokenReceived.get() > 60000) {
 				if (TOKEN_VERBOSE) {
 					System.out.println("generating token");
 				}
@@ -847,6 +847,7 @@ public class DHT extends Thread {
 			if (initialNode) {
 				initialNode = false;
 				try {
+					// if initial node, anything that joins becomes successor
 					Successor su = new Successor(inetNode, port, udpPort);
 					successor.add(su);
 					startCheckSuccessor();
@@ -859,6 +860,7 @@ public class DHT extends Thread {
 			} else {
 				// the node should update it self first
 				// in case it is its own successor, but this should not happen
+				// in case of small DHT ring, may need to update self
 				processUpdate(inetNode.getHostAddress(), thisNode.getHostAddress(),
 						port, udpPort);
 				// sends update messages
@@ -934,7 +936,7 @@ public class DHT extends Thread {
 		}
 		String[] msg = new String[] { "update", newNode, oldNode,
 				String.valueOf(newPort), String.valueOf(udpPort) };
-		forward(msg, 0);
+		forward(msg, 0, true, positiveBigIntegerHash(getByName(oldNode).getAddress()));
 	}
 
 	private static byte[] hash(byte[] data) {
@@ -971,6 +973,9 @@ public class DHT extends Thread {
 			out.println(thisUDPPort);
 
 			out.flush();
+			if (out.checkError()) {
+				throw new IOException("ERR: cannot talk to another node");
+			}
 			clientSocket.close();
 		} catch (IOException e) {
 			System.err.println("DHT.sendInitialJoinRequest() failed!");
@@ -983,7 +988,7 @@ public class DHT extends Thread {
 	private void passJoin(InetAddress inetNode, int port, int udpPort) {
 		String[] msg = new String[] { "join", inetNode.getHostAddress(),
 				String.valueOf(port), String.valueOf(udpPort) };
-		forward(msg, 0);
+		forward(msg, 0, true, positiveBigIntegerHash(inetNode.getAddress()));
 	}
 
 	private void done(String successor, String startKey, int port, int udpPort) {
@@ -1219,6 +1224,15 @@ public class DHT extends Thread {
 		public boolean canBeRemoved() {
 			return canBeRemoved;
 		}
+		
+		public void close() {
+			try {
+				clientSocket.close();
+			} catch (IOException e) {
+				System.err.println("ERR: unable to close socket!");
+				e.printStackTrace();
+			}
+		}
 	}
 
 	@SuppressWarnings("unchecked")
@@ -1241,13 +1255,49 @@ public class DHT extends Thread {
 	 * @param expectedLinesReturned
 	 * @return
 	 */
-	private String[] forward(String[] msg, int expectedLinesReturned) {
+	private String[] forward(String[] msg, int expectedLinesReturned, boolean fast, BigInteger key) {
 		
 		String[] reply = null;
 		
 		if (initialNode) {
 			resetStates();
 			return reply;
+		}
+		
+		if (fast) {
+			int safety = 2;
+			
+			List<Darude> l = allNodes;
+			int finalDest = Collections.binarySearch(l, key);
+			// if not found, that means it is the highest number in the list, so 
+			// the highest # is stored on the 1st node
+			finalDest = finalDest < 0 ? 0 : finalDest;
+				
+			int thisNode = Collections.binarySearch(l, endKey);
+			thisNode = thisNode < 0 ? 0 : thisNode;
+			
+			int distance;
+			if (finalDest > thisNode) {
+				distance = finalDest - thisNode;
+			} else {
+				distance = l.size() - thisNode + finalDest;
+			}
+			
+			//TODO
+			if (l.size() > 15 && distance > maxSuccessor + safety) {
+				try {
+					int contactNode = finalDest - maxSuccessor - safety;
+					contactNode = contactNode < 0 ? contactNode + l.size() : contactNode;
+					Darude d = l.get(contactNode);
+					Successor su = new Successor(d.addr, DEFAULT_DHT_TCP_PORT, Config.validPort[0]);
+					
+					reply = su.send(msg, expectedLinesReturned);
+					su.close();
+					return reply;
+				} catch (IOException e) {
+					//continue as normal, node we wanted to contact is dead...
+				}
+			}
 		}
 
 		ArrayList<Successor> copy = getCopy();
@@ -1442,7 +1492,7 @@ public class DHT extends Thread {
 				//copy.get(i).checkAlive();
 			}
 
-			forward(new String[] { "fail", thisNode.getHostAddress() }, 0);
+			forward(new String[] { "fail", thisNode.getHostAddress() }, 0, false, null);
 			sort.release();
 		}
 	}

@@ -23,7 +23,7 @@ public class StartClient {
 	public static int multiplier = 1;
 	public static int timeout = 3000;
 	public static int tries = 3;
-	public static int maxValueLength = 50;
+	public static int maxValueLength = 920;
 
 	public static Object minMaxLock = new Object();
 	public static long maxP = 0, maxG = 0, maxR = 0;
@@ -42,11 +42,10 @@ public class StartClient {
 	public static void main(String[] args) {
 		boolean readFromFile = false;
 		
-		ClientType clientType = ClientType.ALL
-				;
+		ClientType clientType = ClientType.ALL;
 
 		int numClient = 10;
-		int amount = 20;
+		int amount = 100;
 		// String host = "128.208.4.199";
 		// String host = "planetlab1.dojima.wide.ad.jp";
 		// String host = "roam1.cs.ou.edu";
