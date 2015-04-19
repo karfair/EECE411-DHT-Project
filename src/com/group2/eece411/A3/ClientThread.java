@@ -153,14 +153,15 @@ public class ClientThread extends Thread {
 				out.println(DatatypeConverter.printBase64Binary(val));
 			case ALL:
 			case PUTREMOVE:
-				bytesSent += Code.KEY_LENGTH + Code.VALUE_LENGTH_LENGTH
-						+ val.length;
-		
 				// see if put is working
 				time = System.currentTimeMillis();
 				boolean success = client.put(key, val);
 				time = System.currentTimeMillis() - time;
 				if (success) {
+					bytesSent += Code.KEY_LENGTH + Code.VALUE_LENGTH_LENGTH
+							+ val.length;
+					
+					time %= StartClient.timeout;
 					minP = minP > time ? time : minP;
 					maxP = maxP < time ? time : maxP;
 					put += time;
@@ -187,6 +188,7 @@ public class ClientThread extends Thread {
 				byte[] retVal = client.get(key);
 				time = System.currentTimeMillis() - time;
 				if (retVal != null) {
+					time %= StartClient.timeout;
 					minG = minG > time ? time : minG;
 					maxG = maxG < time ? time : maxG;
 					get += time;
@@ -225,6 +227,7 @@ public class ClientThread extends Thread {
 				success = client.remove(key);
 				time = System.currentTimeMillis() - time;
 				if (success) {
+					time %= StartClient.timeout;
 					minR = minR > time ? time : minR;
 					maxR = maxR < time ? time : maxR;
 					remove += time;

@@ -40,8 +40,8 @@ public class StartClient {
 	 * @param args
 	 */
 	public static void main(String[] args) {
-		boolean readFromFile = false;
 		
+		boolean readFromFile = false;
 		ClientType clientType = ClientType.ALL;
 
 		int numClient = 40;
@@ -76,6 +76,19 @@ public class StartClient {
 			multiplier = Integer.parseInt(args[4]);
 			timeout = Integer.parseInt(args[5]);
 			maxValueLength = Integer.parseInt(args[6]);
+			
+			if (args[7].equalsIgnoreCase("ALL")) {
+				clientType = ClientType.ALL;
+			} else if (args[7].equalsIgnoreCase("GET")) {
+				clientType = ClientType.GET;
+			} else if (args[7].equalsIgnoreCase("PUT")) {
+				clientType = ClientType.PUT;
+			} else if (args[7].equalsIgnoreCase("REMOVE")) {
+				clientType = ClientType.REMOVE;
+			} else {
+				System.err.println("Invalid client type!");
+				System.exit(1);
+			}
 		}
 
 		// run a basic test
@@ -131,7 +144,7 @@ public class StartClient {
 		String hash = "";
 
 		if (readFromFile) {
-			File f = new File("100.txt");
+			File f = new File("nodes.txt");
 			BufferedReader in = null;
 			try {
 				in = new BufferedReader(new FileReader(f));
@@ -227,12 +240,12 @@ public class StartClient {
 
 		// print out some stats
 		System.out.println("Stress test completed. put error: " + p.get()
-				+ " null error: " + n.get() + " len error: " + l.get()
-				+ " val error: " + v.get() + " remove error: " + rem.get());
+				+ " null(get) error: " + n.get() + " len(get) error: " + l.get()
+				+ " val(get) error: " + v.get() + " remove error: " + rem.get());
 		double timeTaken = (System.currentTimeMillis() - time) / 1000.0;
-		System.out.println("Time taken: " + timeTaken + " s. Bytes stored: "
+		System.out.println("Time taken: " + timeTaken + " s. Bytes sent (val len): "
 				+ bytesSent.get() + " Speed: " + (bytesSent.get() / timeTaken)
-				/ 1000.0 + " kBps");
+				/ 1000.0 + " kBps. Messages/requests per second: " + amount / timeTaken + ".");
 		double temp = numClient * amount * 1000;
 		System.out.println("Ave put: " + (double) put.get() / temp
 				+ " s. Ave get: " + (double) get.get() / temp
