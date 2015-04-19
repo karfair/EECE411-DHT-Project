@@ -13,8 +13,8 @@ import com.group2.eece411.KVClient;
 import com.group2.eece411.UDPClient;
 
 public class KillRandom {
-	private static int multiplier = 2;
-	private static int timeout = 200;
+	private static int multiplier = 1;
+	private static int timeout = 5000;
 	private static int tries = 3;
 
 	private static byte[] defaultKey = new byte[] { 99, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -45,6 +45,12 @@ public class KillRandom {
 		// skip 1, kill 2, skip 1, etc...
 		int skip = 1;
 		int kill = 2;
+		
+		if (args.length != 0) {
+			host = args[0];
+			skip = Integer.parseInt(args[1]);
+			kill = Integer.parseInt(args[2]);
+		}
 
 		// run a basic test
 		KVClient client = new KVClient(host);
@@ -141,11 +147,11 @@ public class KillRandom {
 			if (i % cycleLength >= skip) {
 				udp.changeDest(node[i].getHostAddress(), 6772);
 				try {
-					udp.sendAndWaitFor(cmd, 200, 1, 1);
-					System.out.println(i + "success");
+					udp.sendAndWaitFor(cmd, 500, 1, 1);
+					System.out.println(i + " success");
 				} catch (IOException e) {
-					// exception thrown, this is normal
-					System.out.println(i + "fail");
+					// exception thrown if the reply is not received timely
+					System.out.println(i + " fail");
 				}
 			}
 		}
