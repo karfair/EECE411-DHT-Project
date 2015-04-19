@@ -5,6 +5,7 @@ package test.com.group2.eece411;
 import com.group2.eece411.KVServer;
 
 @SuppressWarnings("unused")
+@Deprecated
 public class KVServerTest {
 
 	private KVServer server;

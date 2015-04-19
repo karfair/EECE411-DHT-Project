@@ -2,6 +2,7 @@ package com.group2.eece411.A4;
 
 import com.group2.eece411.DHT;
 
+@Deprecated
 public class TestDHT2 {
 
 	public static void main(String[] args) {

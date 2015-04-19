@@ -15,6 +15,7 @@ import com.group2.eece411.KVServer;
  */
 
 @SuppressWarnings("unused")
+@Deprecated
 public class A3Test {}/*
 	public static void main(String[] args) {
 		byte[] defaultKey = new byte[] { 99, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

@@ -2,6 +2,7 @@ package com.group2.eece411.A3;
 
 import com.group2.eece411.KVClient;
 
+@Deprecated
 public class KillServer {
 	public static void main(String[] args) {
 		// String targetServer = "plonk.cs.uwaterloo.ca";

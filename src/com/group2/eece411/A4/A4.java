@@ -2,6 +2,7 @@ package com.group2.eece411.A4;
 
 import com.group2.eece411.KVServer;
 
+@Deprecated
 public class A4 {
 
 	/**
