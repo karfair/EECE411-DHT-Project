@@ -16,7 +16,7 @@ public class KVStore {
 	}
 
 	public byte[] get(BigInteger key) {
-		System.out.println("map.len: " + map.size());
+		//System.out.println("map.len: " + map.size());
 		return map.get(key);
 	}
 

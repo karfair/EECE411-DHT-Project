@@ -526,15 +526,21 @@ public class KVServer implements RequestListener {
 			return;
 		case Command.SHUTDOWN:
 			// insta kill
-			System.exit(0);
+			// System.exit(0);
 
 			// this wont be run
 			response = Response.SUCCESS;
 			new Thread() {
 				@Override
 				public void run() {
-					stopMe();
-					dht.stopMe();
+					try {
+						Thread.sleep(1000);
+					} catch (InterruptedException e) {
+						System.err.println("sleep didnt work?");
+					}
+					System.exit(0);
+					// stopMe();
+					// dht.stopMe();
 				}
 			}.start();
 			break;
@@ -590,7 +596,7 @@ public class KVServer implements RequestListener {
 			}
 			break;
 		case Command.GET_ALL_NODES:
-			System.out.println("getallnodes");
+			//System.out.println("getallnodes");
 			InetAddress thisHost = dht.getLocalHost();
 			int thisPort = server.getPort();
 
@@ -603,7 +609,7 @@ public class KVServer implements RequestListener {
 					response = Response.SUCCESS;
 					value = new byte[request.length - 1];
 					System.arraycopy(request, 1, value, 0, request.length - 1);
-					System.out.println("returning nodes");
+					//System.out.println("returning nodes");
 					break;
 				}
 			}

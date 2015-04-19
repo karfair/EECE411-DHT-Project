@@ -23,7 +23,7 @@ public class StartClient {
 	public static int multiplier = 1;
 	public static int timeout = 3000;
 	public static int tries = 3;
-	public static int maxValueLength = 920;
+	public static int maxValueLength = 88;
 
 	public static Object minMaxLock = new Object();
 	public static long maxP = 0, maxG = 0, maxR = 0;
@@ -44,7 +44,7 @@ public class StartClient {
 		
 		ClientType clientType = ClientType.ALL;
 
-		int numClient = 10;
+		int numClient = 40;
 		int amount = 100;
 		// String host = "128.208.4.199";
 		// String host = "planetlab1.dojima.wide.ad.jp";
@@ -58,7 +58,7 @@ public class StartClient {
 		// String host = "localhost";
 		// String host = "128.42.142.45";
 		
-		
+		//String host = "198.82.160.239";
 		//group a
 		String host = "plonk.cs.uwaterloo.ca";
 		
@@ -179,7 +179,8 @@ public class StartClient {
 								+ "\n";
 					} catch (UnknownHostException e) {
 					}
-					hash += DHT.positiveBigIntegerHash(inet).toString() + "\n";
+					String keyString = DHT.positiveBigIntegerHash(inet).toString();
+					hash += keyString.substring(0, 5) + "..." + keyString.charAt(keyString.length() - 1) + " " + keyString.length() + "\n";
 				}
 			} else {
 				System.out.println("getAllNodes() failed!");

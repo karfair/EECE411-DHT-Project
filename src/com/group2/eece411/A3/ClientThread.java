@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.xml.bind.DatatypeConverter;
 
 import com.group2.eece411.Config.Code;
+import com.group2.eece411.DHT;
 import com.group2.eece411.KVClient;
 
 public class ClientThread extends Thread {
@@ -165,7 +166,9 @@ public class ClientThread extends Thread {
 					put += time;
 				}
 				if (!success) {
-					System.out.println("put error!");
+					System.out.println("put error! val size:" + val.length);
+					String keyString = DHT.positiveBigIntegerHash(key).toString();
+					System.out.println(keyString.substring(0, 5) + "..." + keyString.charAt(keyString.length() - 1) + " " + keyString.length());
 					p++;
 					continue;
 				}

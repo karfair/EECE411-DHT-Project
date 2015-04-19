@@ -268,7 +268,8 @@ public class UDPServer extends Thread {
 		 * processed packet (a response) with a uniqueRequestID, so that it does
 		 * not get reprocessed.
 		 */
-		private final static int RESPONSE_HOLD_TIME = 6000;
+		//TODO
+		private final static int RESPONSE_HOLD_TIME = 20000;
 
 		private ConcurrentHashMap<String, DatagramPacket> map;
 		private LinkedBlockingQueue<Response> newResponse;
@@ -381,8 +382,8 @@ public class UDPServer extends Thread {
 
 	public boolean reply(byte[] uniqueRequestID, byte[] upperLayerData,
 			InetAddress srcAddr, int srcPort) {
-		System.out.println("addr: " + srcAddr.getHostAddress() + "port: "
-				+ srcPort);
+		//System.out.println("addr: " + srcAddr.getHostAddress() + "port: "
+		//		+ srcPort);
 
 		byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH
 				+ upperLayerData.length];
@@ -418,7 +419,7 @@ public class UDPServer extends Thread {
 		byte[] sendBuf = new byte[Config.REQUEST_ID_LENGTH + Code.CMD_LENGTH
 				+ 16 + request.length];
 		
-		System.out.println("fwd");
+		//System.out.println("fwd");
 		
 		// copy over unique id
 		System.arraycopy(uniqueRequestID, 0, sendBuf, 0,

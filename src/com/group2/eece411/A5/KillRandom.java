@@ -141,9 +141,11 @@ public class KillRandom {
 			if (i % cycleLength >= skip) {
 				udp.changeDest(node[i].getHostAddress(), 6772);
 				try {
-					udp.sendAndWaitFor(cmd, 1, 1, 1);
+					udp.sendAndWaitFor(cmd, 200, 1, 1);
+					System.out.println(i + "success");
 				} catch (IOException e) {
 					// exception thrown, this is normal
+					System.out.println(i + "fail");
 				}
 			}
 		}
