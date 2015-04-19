@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicLong;
 // Circular DHT: Node x key range = (previous node + 1) to x
 public class DHT extends Thread {
 
-	private static final int DEFAULT_DHT_TCP_PORT = 7775;
+	public static final int DEFAULT_DHT_TCP_PORT = 7775;
 
 	private static boolean VERBOSE = false;
 	private static boolean LESS_VERBOSE = false;
@@ -35,7 +35,7 @@ public class DHT extends Thread {
 	 * InetAddress of the successor of this node
 	 */
 	private ArrayList<Successor> successor = new ArrayList<Successor>();
-	private int maxSuccessor = 4;
+	private int maxSuccessor = 7;
 	// private InetAddress[] successor = new InetAddress[2];
 	// private int[] successorPort = new int[2];
 	// private int[] successorUDPPort = new int[2];
@@ -77,7 +77,7 @@ public class DHT extends Thread {
 	private Timer tokenChecker = new Timer();
 	private AtomicLong lastTokenReceived = new AtomicLong(System.currentTimeMillis());
 	
-	private static final boolean TOKEN_VERBOSE = true;
+	private static final boolean TOKEN_VERBOSE = false;
 	
 	private ArrayList<InetAddress> tempNodeList = new ArrayList<InetAddress>();
 
@@ -412,25 +412,27 @@ public class DHT extends Thread {
 		
 		@Override
 		public int compareTo(Object o) {
-			BigInteger key;
+			BigInteger that;
 			if (o instanceof Darude) {
-				key = ((Darude) o).endKey;
+				that = ((Darude) o).endKey;
 			} else {
-				key = (BigInteger) o;
+				that = (BigInteger) o;
 			} 	
 			
 			if (endKeyGreaterThanStart) {
-				if (key.compareTo(startKey) >= 0) {
-					if (key.compareTo(endKey) <= 0) {
+				if (startKey.compareTo(that) <= 0) {
+					if (endKey.compareTo(that) >= 0) {
 						return 0;
 					} else {
 						return -1;
 					}
-				} else {
+				} else /* startKey > that */ {
 					return 1;
 				}
 			} else {
-				if (key.compareTo(startKey) >= 0 || key.compareTo(startKey) <= 0) {
+				// this case only ever applies to the first element of the list
+				// if it isnt found here, that means what you're looking for is greater than this #
+				if (startKey.compareTo(that) <= 0 || endKey.compareTo(that) >= 0) {
 					return 0;
 				} else {
 					return -1;
@@ -486,15 +488,29 @@ public class DHT extends Thread {
 				return;
 			}
 			
-			lastTokenReceived.set(System.currentTimeMillis());
-			darude();
-			
-			// forwards the token
-			if (TOKEN_VERBOSE) {
-				System.out.println("forwarding token");
-			}
 			if (darudeSendLock.tryAcquire()) {
-				forward(list, "token");
+				// TODO
+				long roundTrip = System.currentTimeMillis() - lastTokenReceived.get();
+				if (roundTrip < 5000 && list.size() > 50) {
+					darudeSendLock.release();
+					return;
+				}
+				if (TOKEN_VERBOSE) {
+					System.out.println("Token round trip: " + ((System.currentTimeMillis() - lastTokenReceived.get()) / 1000.0) + "s.");
+				}
+				
+				lastTokenReceived.set(System.currentTimeMillis());
+				darude();
+				
+				// forwards the token
+				if (TOKEN_VERBOSE) {
+					System.out.println("forwarding token");
+				}
+				
+				if (!list.isEmpty()) {
+					forward(list, "token");
+				}
+				
 				darudeSendLock.release();
 			}
 		}
@@ -573,8 +589,21 @@ public class DHT extends Thread {
 			BigInteger previousEndKeyPlusOne = circularPlusOne(positiveBigIntegerHash(lastNodeAddress));
 			BigInteger currentEndKey;
 			List<Darude> l = new ArrayList<Darude>();
+			
+			BigInteger prev = BigInteger.ZERO;
 			for (InetAddress addr : list) {
 				currentEndKey = positiveBigIntegerHash(addr.getAddress());
+				
+				// check if the list if sorted, if not drop the list and don't pass it on
+				if (currentEndKey.compareTo(prev) <= 0) {
+					if (TOKEN_VERBOSE) {
+						System.out.println("dropping token... list order messed up");
+					}
+					list.clear();
+					return;
+				} else {
+					prev = currentEndKey;
+				}
 				Darude d = new Darude(addr, currentEndKey, previousEndKeyPlusOne);
 				previousEndKeyPlusOne = circularPlusOne(currentEndKey);
 				
@@ -587,10 +616,10 @@ public class DHT extends Thread {
 	}
 	
 	private void checkToken() {
-		if (initialNode) {
-			resetStates();
-			return;
-		}
+		//if (initialNode) {
+		//	resetStates();
+		//	return;
+		//}
 		
 		boolean leader;
 		BigInteger successor = positiveBigIntegerHash(getFirstSuccessor().ip.getAddress());
@@ -627,17 +656,19 @@ public class DHT extends Thread {
 				ip += d.addr.getHostAddress() + "\n";
 				hash += partialKey + "\n";
 			}
+			System.out.println("size of list:" + allNodes.size());
 			System.out.println(ip);
 			System.out.println(hash);
 		}
+		System.out.println("size of master list: " + allNodes.size());
 	}
 	
 
 	private void forward(Object darude, String header) {
-		if (initialNode) {
-			resetStates();
-			return;
-		}
+		//if (initialNode) {
+		//	resetStates();
+		//	return;
+		//}
 		
 		ArrayList<Successor> copy = getCopy();
 
@@ -673,12 +704,12 @@ public class DHT extends Thread {
 		}
 
 		if (i == copy.size()) {
-			resetStates();
-			return;
-//			System.err
-//					.println("DHT.forward(): All successors are dead. Server shutting down...");
-//			System.err.println("sucessor.size(): " + copy.size() + " i: " + i);
-//			System.exit(1);
+//			resetStates();
+//			return;
+			System.err
+					.println("DHT.forward(): All successors are dead. Server shutting down...");
+			System.err.println("sucessor.size(): " + copy.size() + " i: " + i);
+			System.exit(1);
 		}
 	}
 
@@ -852,7 +883,7 @@ public class DHT extends Thread {
 					successor.add(su);
 					startCheckSuccessor();
 				} catch (IOException e) {
-					// successor is dead
+					// successor is dead //again super error
 					System.err.println("ERR: Successor is dead! reseting states...");
 					resetStates();
 					e.printStackTrace();
@@ -875,6 +906,7 @@ public class DHT extends Thread {
 		}
 	}
 	
+	@Deprecated
 	private void resetStates() {
 		initialNode = true;
 		successorChecker.cancel();
@@ -1022,9 +1054,16 @@ public class DHT extends Thread {
 		successorChecker.scheduleAtFixedRate(new TimerTask() {
 			@Override
 			public void run() {
+				long now = 0;
+				if (VERBOSE) {
+					now = System.currentTimeMillis();
+				}
 				sortSuccessor();
+				if (VERBOSE) {
+					System.out.println("suc check took: " + ((now - System.currentTimeMillis()) / 1000.0) + "s."); 
+				}
 			}
-		}, 5000, 8000);
+		}, 5000, 10000);
 		
 		tokenChecker.scheduleAtFixedRate(new TimerTask() {
 			@Override
@@ -1208,7 +1247,8 @@ public class DHT extends Thread {
 						// when a dead node is detected, how long until the
 						// entry
 						// can be safely removed
-						sleep(20000);
+						//TODO
+						sleep(30000);
 					} catch (InterruptedException e) {
 					}
 					try {
@@ -1259,10 +1299,10 @@ public class DHT extends Thread {
 		
 		String[] reply = null;
 		
-		if (initialNode) {
-			resetStates();
-			return reply;
-		}
+		//if (initialNode) {
+		//	resetStates();
+		//	return reply;
+		//}
 		
 		if (fast) {
 			int safety = 2;
@@ -1334,15 +1374,17 @@ public class DHT extends Thread {
 		}
 
 		if (i == copy.size()) {
-			resetStates();
-//			System.err
-//					.println("DHT.forward(): All successors are dead. Server shutting down...");
-//			System.err.println("sucessor.size(): " + copy.size() + " i: " + i);
-//			System.exit(1);
+//			resetStates();
+			System.err
+					.println("DHT.forward(): All successors are dead. Server shutting down...");
+			System.err.println("sucessor.size(): " + copy.size() + " i: " + i);
+			System.exit(1);
 		}
 
 		return reply;
 	}
+	
+	private int tries = 0;
 
 	private void sortSuccessor() {
 		if (sort.tryAcquire()) {
@@ -1380,18 +1422,25 @@ public class DHT extends Thread {
 			}
 
 			if (alive.size() == 0) {
-				resetStates();
-				sort.release();
-				return;
-//				System.err
-//						.println("All successors are dead. Server shutting down...");
-//				System.exit(1);
+//				resetStates();
+//				sort.release();
+//				return;
+				tries++;
+				//TODO what is the long term effect of this?
+				if (tries < 3) {
+					sort.release();
+					return;
+				}
+				System.err
+						.println("All successors are dead. Server shutting down...");
+				System.exit(1);
 			}
 
+			tries = 0;
 			ArrayList<Successor> newSuccessor = new ArrayList<Successor>();
 
 			// get successor, start from the furthest one
-			if (alive.size() <= maxSuccessor) {
+			if (alive.size() < maxSuccessor) {
 				for (int i = alive.size() - 1; i >= 0; i--) {
 					Successor s = alive.get(i);
 
@@ -1433,11 +1482,11 @@ public class DHT extends Thread {
 
 					// everything died
 					if (alive.size() == 0) {
-						resetStates();
-						return;
-//						System.err
-//								.println("All successors are dead. Server shutting down...");
-//						System.exit(1);
+//						resetStates();
+//						return;
+						System.err
+								.println("All successors are dead. Server shutting down...");
+						System.exit(1);
 					}
 
 					// add new successor to list
@@ -1489,7 +1538,7 @@ public class DHT extends Thread {
 			// check if all nodes in new are alive
 			// if not call setDead()
 			for (int i = 0; i < copy.size(); i++) {
-				//copy.get(i).checkAlive();
+				copy.get(i).checkAlive();
 			}
 
 			forward(new String[] { "fail", thisNode.getHostAddress() }, 0, false, null);
