@@ -198,9 +198,9 @@ public class KVClient implements Closeable {
 		request[0] = Command.GET_ALL_NODES;
 		byte[] rcv = null;
 		try {
-			rcv = u.sendAndWaitFor(request, 50000, 1, 1); // 10 sec
+			rcv = u.sendAndWaitFor(request, 15000, 1, 3); // 15 sec
 															// 1 multiplier
-															// 5tries
+															// 3 tries
 		} catch (IOException e) {
 			System.err.println("getAllNodes(): no reply: " + e.getMessage());
 			return null;
