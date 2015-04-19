@@ -23,7 +23,7 @@ public class StartClient {
 	public static int multiplier = 1;
 	public static int timeout = 3000;
 	public static int tries = 3;
-	public static int maxValueLength = 88;
+	public static int maxValueLength = 100;
 
 	public static Object minMaxLock = new Object();
 	public static long maxP = 0, maxG = 0, maxR = 0;
@@ -44,7 +44,7 @@ public class StartClient {
 		boolean readFromFile = false;
 		ClientType clientType = ClientType.ALL;
 
-		int numClient = 40;
+		int numClient = 50;
 		int amount = 100;
 		// String host = "128.208.4.199";
 		// String host = "planetlab1.dojima.wide.ad.jp";
@@ -206,10 +206,12 @@ public class StartClient {
 
 		// finish
 		client.close();
+		
+		int totalPackets = amount * numClient * clientType.getPacketMultiplier();
 
 		// stress testing
 		System.out.println("Stress Testing " + numClient + " client(s) at "
-				+ amount + " packet each.");
+				+ amount + " packet each. Test Type: " + clientType.toString() + ". Total Packets: " + totalPackets + ".");
 
 		AtomicInteger p = new AtomicInteger(), n = new AtomicInteger(), l = new AtomicInteger(), v = new AtomicInteger(), rem = new AtomicInteger();
 		AtomicInteger put = new AtomicInteger(), get = new AtomicInteger(), remove = new AtomicInteger();
@@ -245,7 +247,7 @@ public class StartClient {
 		double timeTaken = (System.currentTimeMillis() - time) / 1000.0;
 		System.out.println("Time taken: " + timeTaken + " s. Bytes sent (val len): "
 				+ bytesSent.get() + " Speed: " + (bytesSent.get() / timeTaken)
-				/ 1000.0 + " kBps. Messages/requests per second: " + amount / timeTaken + ".");
+				/ 1000.0 + " kBps. Messages/requests per second: " + totalPackets / timeTaken + ".");
 		double temp = numClient * amount * 1000;
 		System.out.println("Ave put: " + (double) put.get() / temp
 				+ " s. Ave get: " + (double) get.get() / temp

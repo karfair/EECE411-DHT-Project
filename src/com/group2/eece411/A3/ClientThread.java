@@ -306,6 +306,16 @@ public class ClientThread extends Thread {
 	}
 	
 	public static enum ClientType {
-		PUT, GET, REMOVE, ALL, PUTGET, PUTREMOVE, GETREMOVE;
+		PUT(1), GET(1), REMOVE(1), ALL(3), PUTGET(2), PUTREMOVE(2), GETREMOVE(2);
+		
+		private int packetMultiplier;
+		
+		private ClientType(int packetMultiplier) {
+			this.packetMultiplier = packetMultiplier;
+		}
+		
+		public int getPacketMultiplier() {
+			return packetMultiplier;
+		}
 	}
 }
