@@ -52,8 +52,8 @@ public class DHT extends Thread {
 
 	final private static BigInteger MAX_KEY = new BigInteger(new byte[] { 0,
 			-128, -128, -128, -128, -128, -128, -128, -128, -128, -128, -128,
-			-128, -128, -128, -128, -128, -128, -128, -128, -128, -128, -128,
-			-128, -128, -128, -128, -128, -128, -128, -128, -128, -128 });
+			-128, -128, -128, -128, -128 });
+			//, -128, -128, -128, -128, -128, -128, -128, -128, -128, -128, -128, -128, -128, -128, -128, -128 });
 
 	private InetAddress thisNode;
 	private ServerSocket serverSocket;
@@ -979,7 +979,7 @@ public class DHT extends Thread {
 		// }
 		MessageDigest messageDigest = null;
 		try {
-			messageDigest = MessageDigest.getInstance("SHA-256");
+			messageDigest = MessageDigest.getInstance("MD5");
 		} catch (NoSuchAlgorithmException e) {
 			// should not happen
 			System.err.println("DHT.hash() failed! SHA-256 not found!");

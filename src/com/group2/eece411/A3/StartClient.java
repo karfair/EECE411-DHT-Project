@@ -44,8 +44,8 @@ public class StartClient {
 		boolean readFromFile = false;
 		ClientType clientType = ClientType.ALL;
 
-		int numClient = 50;
-		int amount = 100;
+		int numClient = 20;
+		int amount = 10;
 		// String host = "128.208.4.199";
 		// String host = "planetlab1.dojima.wide.ad.jp";
 		// String host = "roam1.cs.ou.edu";

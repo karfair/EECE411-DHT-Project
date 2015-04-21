@@ -655,12 +655,12 @@ public class KVServer implements RequestListener {
 		if (routeMsgTo) { // final reply to another server
 			// TODO not a todo, just really interesting, if this server and the original server is exactly the same,
 			// extreme edge case
-			if (dht.getLocalHost().equals(srcServer)) {
+			//if (dht.getLocalHost().equals(srcServer)) {
 				server.reply(uniqueRequestID, data, srcAddr, srcPort);
-			} else {
-				server.forwardRequest(uniqueRequestID, data, null, 0, srcAddr,
-						srcPort, true, srcServer, serverPort);
-			}
+			//} else {
+			//	server.forwardRequest(uniqueRequestID, data, null, 0, srcAddr,
+			//			srcPort, true, srcServer, serverPort);
+			//}
 		} else { // proceed as normal
 			server.reply(uniqueRequestID, data, srcAddr, srcPort);
 		}

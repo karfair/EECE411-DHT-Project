@@ -1,6 +1,7 @@
 package com.group2.eece411;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -15,8 +16,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-
-import javax.xml.bind.DatatypeConverter;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import com.group2.eece411.Config.Code;
 import com.group2.eece411.Config.Code.Command;
@@ -25,6 +26,9 @@ public class UDPServer extends Thread {
 
 	private static final int MAX_THREADS = 6;
 	private static final int MAX_QUEUE = 100;
+	
+	private static final boolean LOG = false;
+	private Logger<BigInteger> l;
 
 	// hold on to responses for a while so they aren't repeated
 	// creates a processed response list
@@ -77,6 +81,11 @@ public class UDPServer extends Thread {
 		// create a channel
 		fakeudp = new FakeUDP(this);
 		fakeudp.start();
+		
+		if (LOG) {
+			l = new Logger<BigInteger>();
+			l.start();
+		}
 	}
 
 	// stops the server
@@ -110,9 +119,12 @@ public class UDPServer extends Thread {
 
 	@Override
 	public void run() {
+		// creates receive buffer
+		byte[] rcvBuf = new byte[Config.MAX_UDP_PAYLOAD];
+		
 		while (running) {
 			// creates receive buffer
-			byte[] rcvBuf = new byte[Config.MAX_UDP_PAYLOAD];
+			//byte[] rcvBuf = new byte[Config.MAX_UDP_PAYLOAD];
 			DatagramPacket packet = new DatagramPacket(rcvBuf, rcvBuf.length);
 			try {
 				// waits for data
@@ -141,10 +153,10 @@ public class UDPServer extends Thread {
 	}
 
 	// gets the uniqueRequestID from the packet
-	private String getUniqueRequestID(byte[] data) {
+	private BigInteger getUniqueRequestID(byte[] data) {
 		byte[] uniqueRequestID = new byte[Config.REQUEST_ID_LENGTH];
 		System.arraycopy(data, 0, uniqueRequestID, 0, Config.REQUEST_ID_LENGTH);
-		return DatatypeConverter.printHexBinary(uniqueRequestID);
+		return new BigInteger(uniqueRequestID);
 	}
 
 	private void close() {
@@ -271,12 +283,12 @@ public class UDPServer extends Thread {
 		//TODO
 		private final static int RESPONSE_HOLD_TIME = 20000;
 
-		private ConcurrentHashMap<String, DatagramPacket> map;
+		private ConcurrentHashMap<BigInteger, DatagramPacket> map;
 		private LinkedBlockingQueue<Response> newResponse;
 		private CollectorThread collector;
 
 		public ResponseHolder() {
-			map = new ConcurrentHashMap<String, DatagramPacket>();
+			map = new ConcurrentHashMap<BigInteger, DatagramPacket>();
 			newResponse = new LinkedBlockingQueue<Response>();
 
 			// this thread destroys old response record
@@ -284,11 +296,11 @@ public class UDPServer extends Thread {
 			collector.start();
 		}
 
-		public DatagramPacket get(String key) {
+		public DatagramPacket get(BigInteger key) {
 			return map.get(key);
 		}
 
-		public void put(String key, DatagramPacket value) {
+		public void put(BigInteger key, DatagramPacket value) {
 			map.put(key, value);
 			newResponse.add(new Response(key));
 		}
@@ -363,18 +375,18 @@ public class UDPServer extends Thread {
 
 		private class Response {
 			final private long creationTime;
-			final private String uniqueRequestID;
+			final private BigInteger uniqueRequestID;
 
-			public Response(String uniqueRequestID) {
+			public Response(BigInteger key) {
 				creationTime = System.currentTimeMillis();
-				this.uniqueRequestID = uniqueRequestID;
+				this.uniqueRequestID = key;
 			}
 
 			public long getCreationTime() {
 				return creationTime;
 			}
 
-			public String getUniqueRequestID() {
+			public BigInteger getUniqueRequestID() {
 				return uniqueRequestID;
 			}
 		}
@@ -408,6 +420,7 @@ public class UDPServer extends Thread {
 			// e.printStackTrace();
 			return false;
 		}
+		if (LOG) l.left(getUniqueRequestID(uniqueRequestID));
 		return true;
 	}
 
@@ -485,10 +498,29 @@ public class UDPServer extends Thread {
 			// e.printStackTrace();
 			return false;
 		}
+		if (LOG) l.left(getUniqueRequestID(uniqueRequestID));
 		return true;
 	}
 
 	public boolean processDatagram(DatagramPacket packet) {
+		int packetSize = packet.getLength();
+		
+		if (packetSize == 0) {
+			return true;
+		}
+		
+		byte[] buf = packet.getData();
+		
+		if (LOG) {
+			l.log(getUniqueRequestID(buf));
+		}
+		
+		if (buf.length != packetSize) {
+			byte[] newBuf = new byte[packetSize];
+			System.arraycopy(buf, packet.getOffset(), newBuf, 0, packetSize);
+			packet.setData(newBuf);
+		}
+		
 		if (numThreads.tryAcquire()) {
 			// if resources permits, handle the request
 			try {
@@ -507,5 +539,89 @@ public class UDPServer extends Thread {
 			}
 		}
 		return true;
+	}
+	
+	private static class Logger<E> extends Thread {
+		
+		private ConcurrentHashMap<E, Long> map = new ConcurrentHashMap<E, Long>();
+		
+		private AtomicLong totalTime = new AtomicLong();
+		private long tmin = Long.MAX_VALUE, tmax = 0;
+		
+		private AtomicLong lastXTime = new AtomicLong();
+		private long cmin, cmax;
+		
+		//TODO
+		private static final int X = 10000;
+		
+		private AtomicInteger totalPackets = new AtomicInteger(), currentPackets = new AtomicInteger();
+		
+		public Logger() {
+			super("Logger");
+			resetCurrent();
+		}
+		
+		public void log(E uid) {
+			map.put(uid, System.nanoTime());
+		}
+		
+		public void left(E uid) {
+			Long entered = map.get(uid);
+			long processingTime = (System.nanoTime() - entered.longValue()) / 1000;
+			System.out.println("pkt#: " + totalPackets.getAndIncrement() + " Processing time: " + processingTime + " uS.");
+			totalTime.addAndGet(processingTime);
+			lastXTime.addAndGet(processingTime);
+			
+			currentPackets.incrementAndGet();
+			
+			synchronized (this) {
+				tmin = tmin > processingTime ? processingTime
+						: tmin;
+				tmax = tmax < processingTime ? processingTime
+						: tmax;
+				
+				cmin = cmin > processingTime ? processingTime
+						: cmin;
+				cmax = cmax < processingTime ? processingTime
+						: cmax;
+			}
+		}
+		
+		private synchronized void resetCurrent() {
+			lastXTime.set(0);
+			currentPackets.set(0);
+			cmin = Long.MAX_VALUE;
+			cmax = 0;
+		}
+		
+		public void run() {
+			while (true) {
+				
+				synchronized (this) {
+					if (totalPackets.get() != 0 && currentPackets.get() != 0) {
+						System.out.println("--Lifetime Stat--");
+						System.out.println("Average Processing Time: " + totalTime.get() / totalPackets.get() + " uS");
+						System.out.println("Min     Processing Time: " + tmin + " uS");
+						System.out.println("Max     Processing Time: " + tmax + " uS");
+						System.out.println("Total Packets          : " + totalPackets.get());
+						
+						System.out.println("--Last " + X + " mS Stat--");
+						System.out.println("Average Processing Time: " + lastXTime.get() / currentPackets.get() + " uS");
+						System.out.println("Min     Processing Time: " + cmin + " uS");
+						System.out.println("Max     Processing Time: " + cmax + " uS");
+						System.out.println("Current Packets        : " + currentPackets.get());
+					} else {
+						System.out.println("No stats!");
+					}
+					
+					resetCurrent();
+				}
+				
+				try {
+					Thread.sleep(X);
+				} catch (InterruptedException e) {
+				}
+			}
+		}
 	}
 }
