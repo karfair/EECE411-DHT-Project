@@ -632,7 +632,14 @@ public class DHT extends Thread {
 		//if (thisNode.getHostAddress().equals("142.103.2.1")) {
 		//TODO
 		if (leader) {
-			if (System.currentTimeMillis() - lastTokenReceived.get() > 60000) {
+			long waited = System.currentTimeMillis() - lastTokenReceived.get();
+			long limit;
+			if (allNodes.size() > 100) {
+				limit = 90000;
+			} else {
+				limit = 60000;
+			}
+			if (waited > limit) {
 				if (TOKEN_VERBOSE) {
 					System.out.println("generating token");
 				}
@@ -1155,6 +1162,7 @@ public class DHT extends Thread {
 		}
 
 		public boolean checkAlive() {
+			if (!isAlive) return false;
 			try {
 				send(new String[] { "alive" }, 1);
 				return true;
@@ -1537,8 +1545,10 @@ public class DHT extends Thread {
 
 			// check if all nodes in new are alive
 			// if not call setDead()
-			for (int i = 0; i < copy.size(); i++) {
-				copy.get(i).checkAlive();
+			if (copy.size() > 1) {
+				for (int i = 1; i < copy.size(); i++) {
+					copy.get(i).checkAlive();
+				}
 			}
 
 			forward(new String[] { "fail", thisNode.getHostAddress() }, 0, false, null);

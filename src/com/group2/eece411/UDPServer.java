@@ -488,7 +488,7 @@ public class UDPServer extends Thread {
 
 		// send/resend the response
 		try {
-			if (request.length > 1000) {
+			if (request.length > 2000) {
 				FakeUDP.send(response);
 			} else {
 				socket.send(response);
